@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"always","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":false,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
+  </script>
+
+  <meta name="description" content="摘要LSM 树已经成为现代数据系统中最常用的基于存储的数据结构之一，因为它们为写操作提供了高吞吐量和良好的存储空间利用率。然而，LSM树最初并不是为了便于高效读取而设计的。因此，最先进的LSM引擎采用了许多优化技术来提高读取的效率。本教程的目标是介绍LSM范式的基本原则，以及LSM引擎为加快读取速度而采用的各种优化技术和混合设计。为此，我们首先讨论LSM操作的基础和它们的访问模式。然后我们讨论在L">
+<meta property="og:type" content="website">
+<meta property="og:title" content="飞哥编程笔记">
+<meta property="og:url" content="http://example.com/posts/LSM%20%E4%BC%98%E5%8C%96.html">
+<meta property="og:site_name" content="飞哥编程笔记">
+<meta property="og:description" content="摘要LSM 树已经成为现代数据系统中最常用的基于存储的数据结构之一，因为它们为写操作提供了高吞吐量和良好的存储空间利用率。然而，LSM树最初并不是为了便于高效读取而设计的。因此，最先进的LSM引擎采用了许多优化技术来提高读取的效率。本教程的目标是介绍LSM范式的基本原则，以及LSM引擎为加快读取速度而采用的各种优化技术和混合设计。为此，我们首先讨论LSM操作的基础和它们的访问模式。然后我们讨论在L">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2024-10-11T06:49:45.040Z">
+<meta property="article:modified_time" content="2024-10-11T06:49:45.039Z">
+<meta property="article:author" content="Yifei Wu">
+<meta property="article:tag" content="数据库 分布式 OLAP">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/posts/LSM%20%E4%BC%98%E5%8C%96">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : false,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title> | 飞哥编程笔记
+</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">飞哥编程笔记</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">阿飞学习备忘录</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+  </ul>
+</nav>
+
+
+
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+  
+  
+
+          <div class="content page posts-expand">
+            
+
+    
+    
+    
+    <div class="post-block" lang="zh-CN">
+      <header class="post-header">
+
+<h1 class="post-title" itemprop="name headline">
+</h1>
+
+<div class="post-meta">
+  
+
+</div>
+
+</header>
+
+      
+      
+      
+      <div class="post-body">
+          <h2 id="摘要"><a href="#摘要" class="headerlink" title="摘要"></a>摘要</h2><p>LSM 树已经成为现代数据系统中最常用的基于存储的数据结构之一，因为它们为写操作提供了高吞吐量和良好的存储空间利用率。然而，LSM树最初并不是为了便于高效读取而设计的。因此，最先进的LSM引擎采用了许多优化技术来提高读取的效率。本教程的目标是介绍LSM范式的基本原则，以及LSM引擎为加快读取速度而采用的各种优化技术和混合设计。为此，我们首先讨论LSM操作的基础和它们的访问模式。然后我们讨论在LSM树中优化点点查和范围查询的技术和设计：(i)索引和(ii)过滤数据结构，(iii)缓存，以及(iv)便于读取的数据布局。接下来，我们将介绍读写性能之间的权衡，概述了LSM范式的丰富设计空间，以及如何导航它来改进查询性能。我们最后讨论实际问题和开放的研究挑战。</p>
+<h2 id="引言"><a href="#引言" class="headerlink" title="引言"></a>引言</h2><p> LSM 范式已成为现代数据存储中最受欢迎的存储范式之一。这是因为LSM树 (i) 通过采用<strong>数据库外部的数据摄取</strong> 来提供高写入吞吐量，同时 (ii) 它们的不可变文件结构允许良好的存储空间利用。</p>
+<p>LSM及其权衡。LSM树的创立思想是在内存中<strong>缓冲摄取的数据</strong>，然后使用大规模顺序写入将其刷新到存储，通过避免随机写入来促进<strong>快速摄取</strong>。然而，compaction创造了读取和写入成本之间的激烈竞争。虽然积极的compaction意味着查询需要搜索的组件更少，但它增加了写入的平摊成本，从而抵消了LSM树最初的好处。</p>
+<p>试图减少查找成本会以增加内存占用和CPU密集型计算为代价。因此，过去十年中许多工作都集中在如何促进更快的读取上。最先进的LSM引擎使用了一些辅助性的内存数据结构，如过滤器、索引和基于块的缓存，实现了基于工作负载的块缓存和预取技术，并采用了对读取友好的设计和调整来提高查找性能。</p>
+<p>一个丰富的设计空间。深入研究生产环境中的LSM引擎内部机制，可以揭示出许多决定存储引擎性能的设计决策，如存储数据布局、辅助内存组件的实现以促进竞争性读取，以及如何在缓冲区和其他内存组件之间分配内存[18, 75, 76]。这些设计选择共同构成了LSM引擎的广阔设计空间。</p>
+<p><strong>模块I：LSM基础（25分钟）</strong></p>
+<p>​	这个模块讨论了LSM的背景和其核心的读&#x2F;写权衡。(i) LSM结构和其关键操作原则（5分钟）。概述了基于LSM存储引擎的内存和基于存储的组件，并讨论了日志结构合并范式的基本操作原则[18, 27, 58, 65, 76]。(ii) LSM基本操作的访问模式（10分钟）。介绍内部操作（刷新和压缩）[27, 58, 76]和外部操作（put, get, scan, 和 delete）[19, 20, 58, 65, 73]的工作流程。(iii) LSM树中的读写权衡（10分钟）。概述了最先进LSM引擎中用于改善查询性能的关键优化技术，特别是关注LSM压缩设计空间[15, 20, 21, 23, 24, 36, 69, 76, 87]。</p>
+<p><strong>模块II：优化读取（40分钟）</strong></p>
+<p>​	第二个模块概述了各种优化技术，这些技术可以提高点查询和范围查询的效率。</p>
+<p>​		(i) 提高点查询性能的技术（15分钟）。 概述了LSM 引擎中使用的各种过滤器数据结构（和索引结构）以提高点查询性能[18, 19, 23, 26, 50]。</p>
+<p>​		(ii) 提高范围查询性能的技术（10分钟）。 概述了文献中提出的不同过滤器和索引数据结构，以便在LSM引擎中高效地进行范围查询[59, 91–93]。</p>
+<p>​		(iii) 预取和缓存技术；学习型索引（5分钟）。 介绍了新技术来利用缓存和学习型方法加速查询[1, 13, 14, 17, 31, 44, 46, 48, 55, 60, 80, 81, 94]。</p>
+<p>​		(iii) LSM 形状对读性能的影响（10分钟）。 概述了懒惰和贪婪合并策略对读性能的影响，并提供了LSM常见形状对读操作影响的直觉[18, 23, 76]。</p>
+<p><strong>模块 III：LSM 调整（25分钟）</strong></p>
+<p>​	 这个模块介绍了关于LSM 设计空间的可调节性和可导航性的研究，以确保对于不同工作负载而言有最佳的设计选择。</p>
+<p>​		(i) 导航LSM设计空间和权衡曲线（15分钟）。 概述了通过构建基于工作负载的混合LSM形状来导航读写权衡曲线的技术[19, 21, 37–39, 54, 57]。</p>
+<p>​		(ii) 基于工作负载的调整和健壮的调整（5分钟）。 讨论工作负载和性能驱动的LSM引擎的调整技术，包括对健壮的LSM调整的讨论[35, 56]。</p>
+<p>​		(iii) 机遇和开放研究挑战（5分钟）。</p>
+<h3 id="A-模块-I：LSM-基础"><a href="#A-模块-I：LSM-基础" class="headerlink" title="A. 模块 I：LSM 基础"></a>A. 模块 I：LSM 基础</h3><p>LSM设计。LSM树以 Key-Value 对的形式存储数据，其中Key是指向唯一对象标识符的索引，与其关联的数据即为值，在LSM树中的 Entry 通常基于键进行存储和访问。LSM-Tree的设计概念是用层级化的数据布局，其中一个组件位于内存中，而一系列其他组件——一系列排序的运行——存储在外部存储装置上。对于拥有L层的LSM树来说，第一层（Level 0）位于内存中，而其余层级（Level 1至L-1）存储在外部存储中。在数据布局重新组织期间，内存中的组件数据会被逐个移动到存储组件中。</p>
+<p>1）基本操作： 内部操作由存储引擎触发，以重新组织数据布局：(i) 将内存缓冲区的数据 flush 到存储中，和 (ii) 把持久化存储中的有序数据文件合并压缩 compaction 。</p>
+<p>​	 Flush: LSM树在一个可变的内存缓冲区中积累即将到来的条目，以分摊存储访问成本。当内存缓冲区满时，条目会根据键排序，并作为不可变文件刷新到存储中[58]。	</p>
+<p>​	 Compaction: 当存储中的某层达到容量时，该层的所有或部分数据会被移动到下一层，将重叠的键范围内的条目进行排序合并。这一过程被称为压缩，它限制了树中排序运行的数量，并在此过程中垃圾回收逻辑上无效的条目[27, 58]。</p>
+<p>2） 外部操作：由应用程序触发，以通过put、get和scan操作访问或更新数据。 </p>
+<p>​	Put: LSM树以(out-of-place)方式摄取数据；因此，更新被处理成与插入类似。插入、更新和删除首先被放入内存缓冲区，然后以机会主义的方式移动到存储中。 </p>
+<p>​	Get: Get操作返回条目的最新版本。Get操作开始于内存缓冲区，并沿树从最小的排序level遍历至最大的level。当它找到第一个匹配条目时查找终止，因为LSM不变量确保在包含匹配键的最小的level中总是保留条目的最新版本。 </p>
+<p>​	Scan: Scan操作在扫描并合并所有符合条件的内容后，返回一系列键的最新版本。<strong>通常，在范围查找过程中，每个运行会被分配一个迭代器，并且运行会并行扫描</strong>。出于一致性原因，scan操作是在数据的一个版本（或快照）上执行的。版本是在扫描开始时处于活动状态并存活的文件集合。</p>
+<p>2）读取与写入的权衡：LSM树展现了读取和写入之间的内在权衡，理解这一点对于性能调优至关重要。调整缓冲组件的数量、缓冲区大小以及实现，可以在读取-更新-内存权衡[7]，进一步可以基于工作负载和性能目标来优化表现[5, 28, 29, 29, 33, 77, 85]。</p>
+<p>​	为了避免过于急切地将缓冲组件与存储中的排序运行合并，Jagadish等人[42]介绍了LSM的一个分层变体。这种分层设计，在一个层级中拥有多个具有重叠键范围的排序运行，这允许 (i) 更快的数据摄入和 (ii) 降低写放大(write amplification)；但是，代价是 (iii) 增加了查询成本和 (iv) 增加了空间放大(space amplification)[4, 5, 29, 76, 77]。最近的研究提出了一组新的混合数据布局，其中较浅（较小）的层有分层布局，而较低（较大）的层具有层级化布局[20, 36, 37, 87]。</p>
+<p>​	为了更好的负载均衡，一些LSM引擎将键空间分区，并将分区存储在不同的树中[34, 56, 64, 67]。对于对尾延迟敏感的应用程序，许多LSM引擎已经采纳了部分压缩策略，一次压缩一个（或少数几个）文件[29, 32, 33, 75, 76]。对于这样的系统，决定压缩哪些文件会影响数据摄入性能[74, 76]。最近的研究还提出将键和值的存储分开，以改善查找时间，但代价是增加了查询时的额外访问[12, 49, 53, 88]。对于这样的系统，决定哪些文件进行压缩会影响数据摄入性能[74, 76]。最近的研究还提出了将键和值的存储分离，以改善搜索时间，尽管这增加了查询所需的额外访问[12, 49, 53, 88]。</p>
+<p>在这种部分压缩策略中，系统避免了一次性压缩所有文件，而是选择只压缩一部分文件。这样可以减少单次压缩操作对系统资源的占用，特别是在即时响应非常关键的应用中，例如金融交易系统或实时数据处理平台。此外，通过谨慎选择哪些文件进行压缩，可以进一步调优系统性能，以确保摄入新数据的操作不会因过多的后台压缩任务而被显著延迟。</p>
+<p>关于将键和值的存储分离的提议，研究表明，这有助于提高搜索效率，因为针对键的搜索可以不受值的大小和分布的影响。在LSM树的实现中，值可能占用相当大的存储空间；通过分离，可以仅加载必要的键进行搜索，而在返回了正确认证其存在后才检索相关联的值。这种技术尽管会导致一个键的匹配可能需要两次访问（一次是键自身的查找，第二次是对应值的提取），但对于大型对象存储，这种方法可能会在搜索性能上提供整体上的优势。</p>
+<p>B. 模块 II：优化读取</p>
+<p>针对写入进行过优化的LSM设计可能导致读性能不佳。为了改善这一点，LSM引擎采用内存中的辅助结构，如过滤器、索引和缓存。</p>
+<ol>
+<li>基础索引和基于块的缓存：如果没有任何辅助数据结构的帮助，LSM树将会在每次查找时执行多个不必要的I&#x2F;O操作。为了避免在查找期间对每个排序运行进行二进制搜索，LSM树维护栅栏指针（一种特殊形式的区域图[Zonemaps 62]），这允许通过只需一次存储访问即可访问每次运行的相关键范围[27]。这种轻量级数据结构通常以机会方式预取到内存中。LSM-trie通过使用不可变文件作为哈希表，消除了栅栏指针，从而减少了索引导航的CPU开销[87]。Bourbon [17] 使用学习型索引来提高栅栏指针的性能。</li>
+</ol>
+<p>提高查找性能的另一种方法是使用基于块的缓存[71]。商业LSM引擎使用块缓存（例如，RocksDB中常配置为12GB [27]），可以调整以在内存中保留树的前几层、频繁访问的热数据块，甚至过滤器和索引块。由于压缩涉及大量数据移动，经常需要重新获取被压缩后失效的热页到内存中[82]。为了解决这个问题并保留内存中的热页，Leaper [90]介绍了一个机器学习辅助的预测机制，用来识别最近压缩文件中的页面，并在压缩完成后立即将其预取到块缓存中。</p>
+<ol>
+<li><p>点查询过滤器：在最坏情况下，即使有栅栏指针，一个点查找可能需要探测树中的每一个排序运行[18, 27, 58]，导致不必要的I&#x2F;O操作。因此，为了限制点查找的成本，最先进的LSM引擎在内存中维护布隆过滤器[29]。如果过滤器查找返回负结果，布隆过滤器允许完全跳过探测运行[58]。此外，基于块的布隆过滤器[66]减少了CPU缓存未命中，而分区过滤器允许更细粒度的内存缓存[89]。已经提出了几种新的过滤器设计和针对LSM的过滤器优化技术。ElasticBF [50] 和模块化布隆过滤器 [63] 通过使用每个布隆过滤器多个小的过滤器单元来解决访问不均。Ribbon过滤器 [26] 在提供更好的索引时间与空间利用率权衡的同时，增加了额外的CPU工作。另一方面，共享哈希计算 [95] 降低了每次查询的CPU成本。Cuckoo过滤器 [30] 也在SlimDB [68] 和Chucky [23]中作为布隆过滤器的替代品。请注意，其他近似集合成员身份数据结构也可以作为布隆过滤器的替代品[10, 11, 16]。PinK[40]采取了一种不同的方法，完全避免使用布隆过滤器，而是将较浅层级LSM的键固定在内存中。</p>
+</li>
+<li><p>范围查询过滤器：根据设计，LSM并不是为范围查询优化的，因为给定范围内的数据可以分散在树的不同层级中。因此，范围过滤器对于在执行LSM上的范围查询时避免不必要的存储访问至关重要。前缀过滤器使用固定长度的键前缀来回答长范围成员查询[70]。SuRF[91, 92]是一个简洁的基于字典树的过滤器，支持存储键的可变长度前缀，从而允许长范围查询更少的误报。Rosetta[59]介绍了一个包含层级布隆过滤器的范围过滤器，它可以逻辑上构建一个段树来检测更长前缀中的差异，这对于短范围查询更为合适。REMIX通过维护跨多个运行的条目的域顺序索引来减少范围扫描的CPU成本[93]。SNARF是一个基于数组的范围过滤器，使用一个分布感知模型和压缩位数组来高效解决数值范围查询[83]。</p>
+</li>
+<li><p>高级索引技术：在内存中，紧密循环的搜索会进行多次键比较，触发多次缓存未命中并增加CPU利用率[86]。因此，许多系统为每个页面维护一个额外的哈希映射，这允许在恒定时间内找到一个键。有些方法还专注于通过二级索引技术优化次级（非键）属性上的读取操作[55, 60, 80, 81, 94]。</p>
+</li>
+</ol>
+<p>除了传统索引外，近期的工作还集中在使用学习索引（learned index）应用于LSM树，以减少内存占用并加速与索引相关的内存中计算（例如，Bourbon [17]）。RadixSpline [46] 提出了一种学习型基于哈希的索引，它可以在一个单一数据通道构建，不支持插入操作。这种索引对LSM设计有益，因为 (i) 它们的训练时间低，不会影响摄取吞吐量和 (ii) 因为它们的只读性质可以利用LSM中文件的不可变性。虽然其他学习型索引，如PGM [31] 和RMI [48]，支持插入操作，但它们仍可用作LSM上的只读索引。然而，它们需要多次通道来学习数据分布，这增加了构建时间。在最近的一项研究[1]中，谷歌报告了这类索引相比于生产系统中的栅栏指针具有优越性。</p>
+<ol>
+<li>优化内存分配：缓冲区和过滤器之间的内存分配可以经过调整来提高读性能。通常，在生产系统中，布隆过滤器在LSM树的所有层级中被分配相同的内存占用。Monkey[18, 19] 提出了一个理想的内存分配策略 (i) 横跨树内的布隆过滤器和 (ii) 过滤器和缓冲区之间，以导航读写权衡空间。Chucky[23] 同样讨论了这一点，并为LSM上简洁的布谷鸟过滤器使用指纹和可变的哈希桶大小。Luo等人[54, 57] 描述了如何在内存缓冲区和块缓存之间优化内存分配以提升查询性能。</li>
+</ol>
+<p>C. 模块 III：LSM 调优</p>
+<p>商用LSM引擎为开发者提供了数百个调整旋钮，这些可变组件共同构成了LSM设计空间。这个空间非常广阔，量化LSM设计和调优的影响对于提高性能非常重要。</p>
+<ol>
+<li>导航LSM设计空间：Idreos等人[38, 39]引入了将数据结构分解为一阶原语的概念，这在探索LSM设计空间方面具有开创性意义。基于此，设计连续体[37]为LSM描绘了一个更大的设计空间，通过探索不同的设计元素，如(i)存储数据布局，(ii)数据访问模式，和(iii)主内存分配。Sarkar等人[74, 76]介绍了一组一阶压缩原语：(i)压缩触发器，(ii)数据布局，(iii)压缩粒度，和(iv)数据移动策略，强调了压缩如何影响LSM引擎的性能，包括摄入、点查询和范围查询，以及空间和写放大效应。</li>
+</ol>
+<p>LSM-Bush[21]为数据布局引入了一个连续体，其中LSM被配置为基于最坏情况成本建模在每个级别拥有任意数量的排序运行。Cosine[15]摆脱了最坏情况成本建模，并引入了(i)分布感知的I&#x2F;O模型和(ii)基于学习的并发模型，这允许准确地导航LSM设计空间。</p>
+<ol>
+<li>健壮的LSM设计：不断演进的应用需求和共享计算基础设施（例如，私有或公共云）的广泛采用增加了预期工作负载和观察到的工作负载之间的不确定性。针对此，Huynh等人[35]提出了一种健壮的LSM调整方法，以最小化预期工作负载邻域内的最坏情况性能损失。CruiseDB[51]提出了一种自适应准入机制来改善LSM形状，提供更优的尾部性能。Luo等人[56]提出了一种压缩节流机制，以提供可预测的稳定性能，减少由于过度负载底层存储而导致的性能不稳定。Silk+防止在运行异构工作负载的LSM存储中出现延迟峰值[8]。DLC引入了一种感知负载的压缩策略，以增加基于LSM的存储引擎的性能稳定性[43]。</li>
+<li>开放挑战：在教程的最后部分，我们呈现了LSM研究中的机会和开放挑战。 尽管近期做出了努力，但LSM仍然受到高写放大的困扰。因此，减少LSM中的写放大仍然是一个开放挑战。此外，基于工作负载和LSM调整确定最优压缩策略是一个有趣的研究方向。朝这个方向迈出的第一步涉及对每个压缩原语进行广泛的感知工作负载建模。另一个有趣的研究方向涉及在线存储数据布局转换，以适应工作负载变化。这包含了健壮的LSM调整和混合LSM数据布局的关键直觉。减少刷新时写停顿的持续时间和方差也是一个关键挑战。最后但同样重要的是，LSM引擎经常用于事务性环境中，而文献中仍缺少对压缩与事务语义交互的详细分析。</li>
+</ol>
+
+      </div>
+      
+      
+      
+    </div>
+    
+
+    
+    
+    
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E6%91%98%E8%A6%81"><span class="nav-number">1.</span> <span class="nav-text">摘要</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%BC%95%E8%A8%80"><span class="nav-number">2.</span> <span class="nav-text">引言</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#A-%E6%A8%A1%E5%9D%97-I%EF%BC%9ALSM-%E5%9F%BA%E7%A1%80"><span class="nav-number">2.1.</span> <span class="nav-text">A. 模块 I：LSM 基础</span></a></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">Yifei Wu</p>
+  <div class="site-description" itemprop="description">开发心路历程笔记本</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">1</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://x.com/FeigeeWu" title="Twitter → https:&#x2F;&#x2F;x.com&#x2F;FeigeeWu" rel="noopener" target="_blank"><i class="fab fa-twitter fa-fw"></i>Twitter</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="https://www.zhihu.com/people/eager-wu" title="Zhihu → https:&#x2F;&#x2F;www.zhihu.com&#x2F;people&#x2F;eager-wu" rel="noopener" target="_blank"><i class="fa-hand-o-right fa-fw"></i>Zhihu</a>
+      </span>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2024</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">Yifei Wu</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>

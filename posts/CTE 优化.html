@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"always","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":false,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
+  </script>
+
+  <meta name="description" content="CTE 优化1. 背景公用表表达式（CTE）可以被视为在单个DML语句执行范围内定义的临时结果集。CTE类似于派生表，它并不作为对象永久存储，只在查询执行期间存在。在开发过程中使用CTE可以提升SQL语句的可读性，便于管理和维护复杂的查询逻辑。 123456789101112131415161718WITH Sales_CTE (SalesPersonID, TotalSales) AS(">
+<meta property="og:type" content="website">
+<meta property="og:title" content="飞哥编程笔记">
+<meta property="og:url" content="http://example.com/posts/CTE%20%E4%BC%98%E5%8C%96.html">
+<meta property="og:site_name" content="飞哥编程笔记">
+<meta property="og:description" content="CTE 优化1. 背景公用表表达式（CTE）可以被视为在单个DML语句执行范围内定义的临时结果集。CTE类似于派生表，它并不作为对象永久存储，只在查询执行期间存在。在开发过程中使用CTE可以提升SQL语句的可读性，便于管理和维护复杂的查询逻辑。 123456789101112131415161718WITH Sales_CTE (SalesPersonID, TotalSales) AS(">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2024-10-11T06:49:45.031Z">
+<meta property="article:modified_time" content="2024-10-11T06:49:45.030Z">
+<meta property="article:author" content="Yifei Wu">
+<meta property="article:tag" content="数据库 分布式 OLAP">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/posts/CTE%20%E4%BC%98%E5%8C%96">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : false,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title> | 飞哥编程笔记
+</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">飞哥编程笔记</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">阿飞学习备忘录</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+  </ul>
+</nav>
+
+
+
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+  
+  
+
+          <div class="content page posts-expand">
+            
+
+    
+    
+    
+    <div class="post-block" lang="zh-CN">
+      <header class="post-header">
+
+<h1 class="post-title" itemprop="name headline">
+</h1>
+
+<div class="post-meta">
+  
+
+</div>
+
+</header>
+
+      
+      
+      
+      <div class="post-body">
+          <h1 id="CTE-优化"><a href="#CTE-优化" class="headerlink" title="CTE 优化"></a>CTE 优化</h1><h1 id="1-背景"><a href="#1-背景" class="headerlink" title="1. 背景"></a>1. 背景</h1><p>公用表表达式（CTE）可以被视为在单个DML语句执行范围内定义的临时结果集。CTE类似于派生表，它并不作为对象永久存储，只在查询执行期间存在。在开发过程中使用CTE可以提升SQL语句的可读性，便于管理和维护复杂的查询逻辑。</p>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">WITH</span> Sales_CTE (SalesPersonID, TotalSales) <span class="keyword">AS</span></span><br><span class="line">(</span><br><span class="line">    <span class="keyword">SELECT</span> SalesPersonID, <span class="built_in">SUM</span>(TotalSaleAmount)</span><br><span class="line">    <span class="keyword">FROM</span> Sales</span><br><span class="line">    <span class="keyword">GROUP</span> <span class="keyword">BY</span> SalesPersonID</span><br><span class="line">)</span><br><span class="line"><span class="keyword">SELECT</span> p.FirstName, p.LastName, s.TotalSales</span><br><span class="line"><span class="keyword">FROM</span> SalesPerson <span class="keyword">AS</span> p</span><br><span class="line"><span class="keyword">JOIN</span> Sales_CTE <span class="keyword">AS</span> s <span class="keyword">ON</span> p.SalesPersonID <span class="operator">=</span> s.SalesPersonID</span><br><span class="line"><span class="keyword">WHERE</span> s.TotalSales <span class="operator">&gt;</span> <span class="number">50000</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">UNION</span> <span class="keyword">ALL</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">SELECT</span> p.FirstName, p.LastName, s.TotalSales</span><br><span class="line"><span class="keyword">FROM</span> Manager <span class="keyword">AS</span> p</span><br><span class="line"><span class="keyword">JOIN</span> Sales_CTE <span class="keyword">AS</span> s <span class="keyword">ON</span> p.ManagerID <span class="operator">=</span> s.SalesPersonID</span><br><span class="line"><span class="keyword">WHERE</span> s.TotalSales <span class="operator">&gt;</span> <span class="number">50000</span></span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>在这个例子中，<code>Sales_CTE</code>是一个包含销售人员ID和他们总销售额的CTE。这个CTE首先被用于从销售人员表<code>SalesPerson</code>中检索总销售额超过50,000的销售人员。然后，相同的CTE再次被用于从经理表<code>Manager</code>中检索同样条件的销售经理，使用<code>UNION ALL</code>联合两个查询结果。</p>
+<p>CTE复用实际上就是让上游生成的数据可以被多个下游多次消费。为了实现这个功能，我们需要考虑下面两点：</p>
+<ol>
+<li><strong>框架如何支持一个生产者对应多个消费者的拓扑。</strong></li>
+<li><strong>如何在算子级别实现生产者和消费者的有效管理, 避免死锁。</strong></li>
+</ol>
+<h2 id="2-执行引擎"><a href="#2-执行引擎" class="headerlink" title="2. 执行引擎"></a>2. 执行引擎</h2><p>我们比较常见的系统里有流系统，MPP引擎以及批引擎（StageByStage）这三种，对于这三种主要区别在于同一个SQL生成的执行计划依赖关系可能会发生变化,我们先做个简单的对比如下：</p>
+<table>
+<thead>
+<tr>
+<th>特征</th>
+<th>流系统</th>
+<th>MPP引擎</th>
+<th>批引擎</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>数据Spill</td>
+<td>流式处理架构侧重于内存操作，通过异步流动的方式处理状态持久化以确保精确一次性（Exactly-once）的数据处理。</td>
+<td>MPP 引擎通常避免数据Spill，尽量吧数据流pipeline 化，以优化性能。</td>
+<td>批处理引擎长周期、大数据量的计算任务而设计，需要支持容错和断点续传机制，通常会将中间结果持久化到磁盘上，以便在出现故障时能够从中断点恢复处理。</td>
+</tr>
+<tr>
+<td>拓扑依赖</td>
+<td>查询计划确定 DAG 之后拓扑基本不变，后续调整分片和并发。</td>
+<td>静态拓扑，查询计划确定后依赖关系一般不变。执行过程中要处理数据分布和节点间通信。</td>
+<td>静态拓扑，任务一旦开始执行，依赖关系通常不会改变。可以预先规划任务间的数据流。</td>
+</tr>
+<tr>
+<td>依赖管理和容错</td>
+<td>必须实时管理依赖状态，容错机制需立即响应，如保存状态快照以便失败恢复。</td>
+<td>依赖关系较为固定，容错通过重新执行失败的查询</td>
+<td>通常通过重试失败的Task来管理容错，可能涉及到重新处理大量数据。</td>
+</tr>
+<tr>
+<td>示例系统</td>
+<td>Apache Flink</td>
+<td>Greenplum, Presto</td>
+<td>Apache Hadoop, Apache Spark</td>
+</tr>
+</tbody></table>
+<p>​	CTE在不同的引擎里处理的问题会有很大区别，在流引擎和批引擎中基本上不存在死锁的问题，所以相对而言实现起来就会简单，大部分场景优化器就能贪心解决。本文主要讲的是CTE在MPP 引擎下的相关实现。</p>
+<h2 id="3-CTE-复用优化"><a href="#3-CTE-复用优化" class="headerlink" title="3. CTE 复用优化"></a>3. CTE 复用优化</h2><h3 id="3-1-优化器部分"><a href="#3-1-优化器部分" class="headerlink" title="3.1 优化器部分"></a>3.1 优化器部分</h3><h4 id="3-1-1-如何识别和表示CTE？"><a href="#3-1-1-如何识别和表示CTE？" class="headerlink" title="3.1.1 如何识别和表示CTE？"></a>3.1.1 如何识别和表示CTE？</h4><p>​	FE&#x2F;Optimizer 基础功能就是用meta 描述SQL对应的执行计划，有几个方面：1. 输出列的顺序和对齐信息 2. 各个算子对应的物理实现 3. 整个执行计划的拓扑结构，一般是Tree或者DAG。<br>这个需要理解到Parser和Analyze链路，对于With 子查询，可以在parser的时候显式的独立表示或者标记即可。对于系统里面定义的View也可以做CTE，和上面一致。<br>主动的找到SQL里面的相同子树，是子树匹配算法。但是到底切多大的子树是个比较难的问题，Flink中用calcite digest这套机制来做，方案和上述类似。</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"># 系统中Parser会直接把CTE子查询展开inline掉的情况</span><br><span class="line">PlanNode &#123;</span><br><span class="line">	List&lt;PlanNode&gt; children;</span><br><span class="line">	int node_id;</span><br><span class="line">	int origin_producer_id; // Parser阶段标记好</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+<h4 id="3-1-2-需要判断-CTE-inline-和-CTE-Reuse-哪种方案更优-？"><a href="#3-1-2-需要判断-CTE-inline-和-CTE-Reuse-哪种方案更优-？" class="headerlink" title="3.1.2 需要判断 CTE-inline 和 CTE-Reuse 哪种方案更优 ？"></a>3.1.2 需要判断 CTE-inline 和 CTE-Reuse 哪种方案更优 ？</h4><ol>
+<li>inline可能受益就可以给每个CTE部分做不同的优化，比如PredicatePushDown。</li>
+<li>CTE-Reuse的收益就是可以减少重复数据计算和IO。<br>   为了解决哪种方案更优，这个Rule就很好决策应该放到Cascades中，规则的伪代码如下：</li>
+</ol>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br></pre></td><td class="code"><pre><span class="line">```</span><br><span class="line">GroupExpr &#123;</span><br><span class="line">	List&lt;Group&gt; children;</span><br><span class="line">	ExprNode curExpr;<span class="comment">//like JOIN/AGG</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">Group &#123;</span><br><span class="line">	List&lt;GroupExpr&gt; exprs;</span><br><span class="line">	Map&lt;Prop, GroupExpr&gt; bestExprs; <span class="comment">// lowest cost</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">CTEReuseRule &#123;</span><br><span class="line">	<span class="comment">// Step #1 Collect CTE -&gt; Map&lt;node_id, CTEProducers&gt;</span></span><br><span class="line">Map&lt;<span class="type">int</span>, PlanNode&gt; cte_producers = collectCTEProducers();</span><br><span class="line"><span class="comment">// Step #2 Replace subTree to CTE</span></span><br><span class="line">foreach (node in root.children) &#123;</span><br><span class="line">	<span class="keyword">if</span> (cte_producers.get(node.origin_producer_id) != <span class="literal">null</span>) &#123;</span><br><span class="line">		replaceChildToCTEProducer();</span><br><span class="line">	&#125; <span class="keyword">else</span> &#123;</span><br><span class="line">		ReplaceSubTreeToCTE(node, cte_producers);</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br><span class="line"><span class="comment">// Step #3 ReplaceEachCTE</span></span><br><span class="line">forecah (cte in cte_producers) &#123;</span><br><span class="line">		ReplaceSubTreeToCTE(cte, cte_producers);</span><br><span class="line">&#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">```   </span><br></pre></td></tr></table></figure>
+
+<h4 id="3-1-3-规避CTE-Reuse-死锁问题？"><a href="#3-1-3-规避CTE-Reuse-死锁问题？" class="headerlink" title="3.1.3 规避CTE-Reuse 死锁问题？"></a>3.1.3 规避CTE-Reuse 死锁问题？</h4><ol>
+<li><p>如何检测该节点是否会发生死锁？</p>
+<ol>
+<li><p>MPP 引擎出现死锁的问题，也就是拓扑关系上出现了环行依赖, 但是在不同的阶段去探测和处理是不一样的。</p>
+</li>
+<li><p>Cascades框架检测该节点是否会发生死锁？<br>  目前没看到现实实践，这里分享下个人思考，这里难点在于如何通过GroupExpr来传递和记录这些属性。</p>
+</li>
+<li><p>把MemCTEProducer和SpillCTEProducer的物理算子都通过implement引入。</p>
+</li>
+<li><p>增加物理属性重复读和不可重复读的物理属性；给GroupExpr Derive出来依赖的CTE算子集合（这里比较复杂，需要在计算bestExpr的时候收集完整）。</p>
+</li>
+<li><p>对HashJoin这种算子向下require两种属性，但是对于不可重复读的需要检查是否会发生CTE依赖问题，如果出现的情况，MemCTEProduce的Expr需要被剔除。</p>
+</li>
+<li><p>RuleBase检测是否会发生死锁？<br>  算法：按照执行顺序遍历整棵树，检查是否存在两个CTE-Producer的节点被同时依赖，然后出现死锁。</p>
+  <figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br></pre></td><td class="code"><pre><span class="line">```</span><br><span class="line">PlanNode &#123;</span><br><span class="line">	List&lt;PlanNode&gt; children;</span><br><span class="line">	<span class="type">int</span> nodeId;</span><br><span class="line">	<span class="type">int</span> originProducer_id; <span class="comment">// Parser阶段标记好</span></span><br><span class="line">  bool needSpill;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// return &lt;depend all ctes,  fully consumed CTE-producers&gt;</span></span><br><span class="line">Pair&lt;List&lt;PlanNode&gt;, List&lt;&lt;PlanNode&gt;&gt; CollectDependCTEProducers(PlanNode root) &#123;</span><br><span class="line">	<span class="keyword">switch</span>(root.type) &#123;</span><br><span class="line">		<span class="keyword">case</span> HashJoin:</span><br><span class="line">      <span class="comment">// probe-side</span></span><br><span class="line">			Pair&lt;List&lt;PlanNode&gt;, List&lt;&lt;PlanNode&gt;&gt; left = CollectDependCTEProducers(root.children(<span class="number">0</span>));</span><br><span class="line">			<span class="comment">// build-side</span></span><br><span class="line">      Pair&lt;List&lt;PlanNode&gt;, List&lt;&lt;PlanNode&gt;&gt; right = CollectDependCTEProducers(root.children(<span class="number">1</span>));</span><br><span class="line">			<span class="comment">// check all-cte from left intersect on right full-consumed ctes</span></span><br><span class="line">			markCycleCTE();</span><br><span class="line">			<span class="keyword">return</span> Pair&lt;left.first+right.first, right.second&gt;;</span><br><span class="line">			...</span><br><span class="line">		<span class="keyword">default</span>:</span><br><span class="line">			<span class="comment">// collect all CTE in </span></span><br><span class="line">      <span class="keyword">return</span> Pair&lt;left.first+right.first, left.first+ right.second&gt;;</span><br><span class="line">	&#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">```</span><br></pre></td></tr></table></figure></li>
+<li><p>发现死锁以后怎么解决？</p>
+<pre><code> 1. 把死锁的Plan剔除（如果发现这种情况就自动退化）
+ 2. 标记该死锁节点需要 Spill，考虑是否划算
+ 3. 手动回退
+</code></pre>
+</li>
+</ol>
+<h3 id="4-计算引擎侧"><a href="#4-计算引擎侧" class="headerlink" title="4. 计算引擎侧"></a>4. 计算引擎侧</h3><ol>
+<li>整个计算框架如何支持一个生产者对应多个消费者的拓扑。</li>
+<li>算子级别实现生产者和消费者的有效管理。CTE算子本身其实可以看作是RPC节点，本质没有特殊逻辑。<ol>
+<li>buffer版本：一种特殊的RingBuffer算法可以解决，核心是限制内存大小，size要改成动态计算。</li>
+<li>Spill 版本：可以直接CTE-Producer把数据落盘，下游算子再来消费。</li>
+</ol>
+</li>
+</ol>
+</li>
+</ol>
+
+      </div>
+      
+      
+      
+    </div>
+    
+
+    
+    
+    
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-1"><a class="nav-link" href="#CTE-%E4%BC%98%E5%8C%96"><span class="nav-number">1.</span> <span class="nav-text">CTE 优化</span></a></li><li class="nav-item nav-level-1"><a class="nav-link" href="#1-%E8%83%8C%E6%99%AF"><span class="nav-number">2.</span> <span class="nav-text">1. 背景</span></a><ol class="nav-child"><li class="nav-item nav-level-2"><a class="nav-link" href="#2-%E6%89%A7%E8%A1%8C%E5%BC%95%E6%93%8E"><span class="nav-number">2.1.</span> <span class="nav-text">2. 执行引擎</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-CTE-%E5%A4%8D%E7%94%A8%E4%BC%98%E5%8C%96"><span class="nav-number">2.2.</span> <span class="nav-text">3. CTE 复用优化</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#3-1-%E4%BC%98%E5%8C%96%E5%99%A8%E9%83%A8%E5%88%86"><span class="nav-number">2.2.1.</span> <span class="nav-text">3.1 优化器部分</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#3-1-1-%E5%A6%82%E4%BD%95%E8%AF%86%E5%88%AB%E5%92%8C%E8%A1%A8%E7%A4%BACTE%EF%BC%9F"><span class="nav-number">2.2.1.1.</span> <span class="nav-text">3.1.1 如何识别和表示CTE？</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#3-1-2-%E9%9C%80%E8%A6%81%E5%88%A4%E6%96%AD-CTE-inline-%E5%92%8C-CTE-Reuse-%E5%93%AA%E7%A7%8D%E6%96%B9%E6%A1%88%E6%9B%B4%E4%BC%98-%EF%BC%9F"><span class="nav-number">2.2.1.2.</span> <span class="nav-text">3.1.2 需要判断 CTE-inline 和 CTE-Reuse 哪种方案更优 ？</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#3-1-3-%E8%A7%84%E9%81%BFCTE-Reuse-%E6%AD%BB%E9%94%81%E9%97%AE%E9%A2%98%EF%BC%9F"><span class="nav-number">2.2.1.3.</span> <span class="nav-text">3.1.3 规避CTE-Reuse 死锁问题？</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#4-%E8%AE%A1%E7%AE%97%E5%BC%95%E6%93%8E%E4%BE%A7"><span class="nav-number">2.2.2.</span> <span class="nav-text">4. 计算引擎侧</span></a></li></ol></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">Yifei Wu</p>
+  <div class="site-description" itemprop="description">开发心路历程笔记本</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">1</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://x.com/FeigeeWu" title="Twitter → https:&#x2F;&#x2F;x.com&#x2F;FeigeeWu" rel="noopener" target="_blank"><i class="fab fa-twitter fa-fw"></i>Twitter</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="https://www.zhihu.com/people/eager-wu" title="Zhihu → https:&#x2F;&#x2F;www.zhihu.com&#x2F;people&#x2F;eager-wu" rel="noopener" target="_blank"><i class="fa-hand-o-right fa-fw"></i>Zhihu</a>
+      </span>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2024</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">Yifei Wu</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>

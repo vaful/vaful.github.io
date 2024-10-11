@@ -1,0 +1,435 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"always","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":false,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
+  </script>
+
+  <meta name="description" content="论文总结 ​	因为最近的工作都是在搞流计算相关，对流计算里面的很多基础知识比较欠缺，所以找了些资料和论文来学习，这篇主要是记录下前段时间看到的一篇论文。论文可以看作是一篇综述，把流计算里面主要的一些问题和常见的算法都有描述和说明，比较适合对这块领域经验不太多的人入门参考。这篇论文涉及的产品挺多，整个文章结构是按照流计算的模块来划分的，看起来会稍微有点割裂，当然好处是可以把感兴趣的产品记录下来，再">
+<meta property="og:type" content="website">
+<meta property="og:title" content="飞哥编程笔记">
+<meta property="og:url" content="http://example.com/posts/%E6%B5%81%E8%AE%A1%E7%AE%97%E7%B3%BB%E7%BB%9F%E7%AE%80%E4%BB%8B.html">
+<meta property="og:site_name" content="飞哥编程笔记">
+<meta property="og:description" content="论文总结 ​	因为最近的工作都是在搞流计算相关，对流计算里面的很多基础知识比较欠缺，所以找了些资料和论文来学习，这篇主要是记录下前段时间看到的一篇论文。论文可以看作是一篇综述，把流计算里面主要的一些问题和常见的算法都有描述和说明，比较适合对这块领域经验不太多的人入门参考。这篇论文涉及的产品挺多，整个文章结构是按照流计算的模块来划分的，看起来会稍微有点割裂，当然好处是可以把感兴趣的产品记录下来，再">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2024-10-11T06:49:45.058Z">
+<meta property="article:modified_time" content="2024-10-11T06:49:45.058Z">
+<meta property="article:author" content="Yifei Wu">
+<meta property="article:tag" content="数据库 分布式 OLAP">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/posts/%E6%B5%81%E8%AE%A1%E7%AE%97%E7%B3%BB%E7%BB%9F%E7%AE%80%E4%BB%8B">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : false,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title> | 飞哥编程笔记
+</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">飞哥编程笔记</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">阿飞学习备忘录</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+  </ul>
+</nav>
+
+
+
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+  
+  
+
+          <div class="content page posts-expand">
+            
+
+    
+    
+    
+    <div class="post-block" lang="zh-CN">
+      <header class="post-header">
+
+<h1 class="post-title" itemprop="name headline">
+</h1>
+
+<div class="post-meta">
+  
+
+</div>
+
+</header>
+
+      
+      
+      
+      <div class="post-body">
+          <p><The evolution of stream processing systems> 论文总结</p>
+<p>​	因为最近的工作都是在搞流计算相关，对流计算里面的很多基础知识比较欠缺，所以找了些资料和论文来学习，这篇主要是记录下前段时间看到的一篇论文。论文可以看作是一篇综述，把流计算里面主要的一些问题和常见的算法都有描述和说明，比较适合对这块领域经验不太多的人入门参考。这篇论文涉及的产品挺多，整个文章结构是按照流计算的模块来划分的，看起来会稍微有点割裂，当然好处是可以把感兴趣的产品记录下来，再按照引用仔细研究下这些个产品的细致实现和原理。</p>
+<p>​	作者基于过去20年流计算系统的研究和发展， 在以下几个方面对各个系统做了一个细致的对比：1. Out-Of-Order 2. StateManagement 3. 高可用 4. 弹性扩缩容和重配置。2. 作者希望通过这种梳理和回顾，来对流计算的处理和发展做一些预测，（这个部分而言我感觉收获不大）。</p>
+<h3 id="流计算系统简介"><a href="#流计算系统简介" class="headerlink" title="流计算系统简介"></a>流计算系统简介</h3><p>作者将流计算系统的发展划分成了几个阶段，第一代（00-10年）和第二三代（11年到22年），具体见下图。第一代流系统重要的代表是IBM System S，Oracle CQL这些，这一代都是作为数据库的一个插件来存在，协议都支持SQL，主要关注问题在 streaming window queries 和复杂的事件处理上，一般都采取scale-up 架构，而且大多数都在处理有序的消息流。第二代是由于MapReduce和分布式的兴起，整个流计算的架构转移到了分布式share-nothing的架构下，主要关注点在数据并行处理以及大规模无序流的容错、横向扩展处理等方向发展。</p>
+<p>![image-20231107145340394](&#x2F;Users&#x2F;yifei&#x2F;Library&#x2F;Application Support&#x2F;typora-user-images&#x2F;image-20231107145340394.png)</p>
+<h3 id="前言"><a href="#前言" class="headerlink" title="前言"></a>前言</h3><h4 id="流计算的特点与要求"><a href="#流计算的特点与要求" class="headerlink" title="流计算的特点与要求"></a>流计算的特点与要求</h4><ul>
+<li>数据流处理的是无限数据流，用有限的内存资源计算并以连续方式生成结果。流式查询处理在以下方面具备独特性也充满挑战。首先，持续生成更新的结果可能需要全量的历史信息，这些全量数据（或者概要信息sketches）需要被有效查询和更新。其次为了处理特别高频输入，可能无法持续更新索引和物化视图。最后一般为了获得可接受的性能，流的算子需要利用增量计算。基于上述特点，流计算会有一些显著的独特要求：<ul>
+<li>低延迟和高吞吐量的性能要求</li>
+<li>数据无序性处理：由于缺乏对输入顺序的控制，流系统在接收无序和延迟数据时需要产生正确的结果，仅一步需要估计流进度并推理结果完整性的机制。</li>
+<li>状态管理：流查询的长期运行特性要求流系统管理累积状态并防止出现故障。</li>
+<li>流量控制：无法控制数据输入速率需要流系统自动做流控，以便它们可以在不牺牲性能的情况下动态处理工作负载。</li>
+</ul>
+</li>
+</ul>
+<h3 id="主要架构对比"><a href="#主要架构对比" class="headerlink" title="主要架构对比"></a>主要架构对比</h3><p>  第一代和第二代的主要区别在以下几个方面：</p>
+<ol>
+<li>第一代是基于DBMS的一个子模块来被处理的，一般是单机的版本，天生就具备SQL接口，优化器以及计划执行等能力。第二代主要是分布式并发处理模式，接口会有大量的自定义函数和算子。</li>
+<li>第一代中的SQL基本上都是db级别，不怎么做隔离；第二代中单个query就是独立的分布式task会做独立的资源规划和管理。</li>
+<li>状态管理和容错方面也都会不同，后续会细说。</li>
+</ol>
+<p>![image-20231107171554450](&#x2F;Users&#x2F;yifei&#x2F;Library&#x2F;Application Support&#x2F;typora-user-images&#x2F;image-20231107171554450.png)</p>
+<h3 id="out-of-order-processing"><a href="#out-of-order-processing" class="headerlink" title="out-of-order processing"></a>out-of-order processing</h3><p>​	通常，流中数据的顺序是流语义的一部分。针对某种特殊执行任务，流系统可能必须按照特定顺序处理流消息，才能提供语义上正确的结果（每个系统都有区别，比如对同一个Key遇到的update_before和update_after消息颠倒了就可能出现算不对）。但是现实中，经常会由于下面的一些原因会导致消息出现混乱，而必须得采取一些针对无序数据的具体措施。</p>
+<ol>
+<li>外部原因：网络抖动等</li>
+<li>内部因素：比如 1. 双流Join 2. 基于一个非时间属性的元素做Window计算 3. Sort和Union算子可能也会导致顺序变化</li>
+</ol>
+<p>处理方式主要有以下两类：<br>     1. 有序处理方式：本质是给这些无序的消息做下排序之后再向下发送，确保其有序。比如会先缓存一部分消息数据然后再做次重排序。在这种模式下，处理进度就可以直接用数据处理到了哪个消息时间点，就能反应整个系统的延迟了。<br>     2. 无序处理方式：通过将系统内目前最大的延迟传递到执行路径上，然后基于这个延迟设定一个延迟上限，只要元组不超过延迟界限，元组的处理就不会延迟。窗口的处理模式具体的方式大概如下：</p>
+<ul>
+<li>Slack ：通过限制窗口中可以容纳的最大的无序消息个数，达到上限了就直接提交运算。</li>
+<li>heartbeat ：本质上通过定时向输入发送心跳，带着时间戳信息，输入将&lt;&#x3D;这个事件戳的消息做排序，再发送到窗口中下游的处理结果就是有序的</li>
+<li>low-watermark：简单来说其实是用一个类似时间戳信息放置到时间窗口上，当遇到比这个watermark大的消息的时候就触发下一个窗口或者结束本窗口。确保这些个时间范围内的数据是相对有序的。</li>
+<li>punctuations：听起来是往整个消息流中插入一些额外的事件信息，比如一些事件戳（没有具体例子，根据语义猜测）</li>
+<li>Pointstamps：没看懂「找机会再补充」</li>
+</ul>
+<h4 id="数据修正"><a href="#数据修正" class="headerlink" title="数据修正"></a>数据修正</h4><ul>
+<li>Store and revise ： 把数据存放好，然后通过回撤来处理和更新相应的数据结构。</li>
+<li>Replay and revise：这种意思是要求把中间结果存下来，还是那个以后计算和检测到合适的乱序数据，下游就给予之前的位点重放数据</li>
+</ul>
+<h4 id="各个产品"><a href="#各个产品" class="headerlink" title="各个产品"></a>各个产品</h4><p>​	但是每个产品是怎么处理这种 OutOfOrder 的情况下，看完之后还是有比较多的疑惑，后续再挨个调研问题细节。</p>
+<h3 id="State-Management"><a href="#State-Management" class="headerlink" title="State Management"></a>State Management</h3><p>这个章节没有啥新意，就记录一下几个重要问题：</p>
+<ul>
+<li>各个系统怎么做ExactlyOnce</li>
+<li>几个产品怎么做State持久化，State持久化粒度。</li>
+<li>怎么扩容</li>
+</ul>
+<h4 id="具体产品"><a href="#具体产品" class="headerlink" title="具体产品"></a>具体产品</h4><p> Google Millwheel ： 是对每个本地操作使用一个事务，Millwheel 使用 BigTable 提交每个完整的计算操作，其中包括：输入事件、状态转换和生成的输出。</p>
+<p>Flink ： Chandy-Lamport snapshots 的算法，核心思想是在流中添加标记barrier，并使用该标记来分隔系统运行时快照之前和之后发生的所有操作。没有对齐的快照是需要记录到输入的Task中直到流完成，意思是把没对齐的部分流数据写出以便failover之后能够Replay。Flink这里就是添加了一个阶段确保这些个snapshot都对齐到同一个barrier再往下，这样做的好处可以是 1. 为Snapshot isolation 的查询业务提供了保证，2. reconfiguration 在这种方式下有一些可玩的玩法（这里需要看下引用不是太懂）</p>
+<p>Spark Streaming： 第一阶段完全处理完这一端数据，第二阶段在计算完把这些状态全都持久化。这种方法的主要缺点是由于同步执行而导致任务利用率低的风险，因为任务必须等待所有其他任务完成其当前时期。一种缓解方法是提交多阶段数据，这里有必要去研究下Drizzle 和 S-Store 。</p>
+<h4 id="作者提出的问题"><a href="#作者提出的问题" class="headerlink" title="作者提出的问题"></a>作者提出的问题</h4><ul>
+<li><p>流状态执行与状态持久化解耦：用这些架构提升性能(LSM-trees, state indexing, externalized state）</p>
+</li>
+<li><p>workload-aware state management ：需要进一步看引用的论文了</p>
+</li>
+<li><p>Apative执行：自动执行选择正确物理计划，执行过程中重新调整计划。</p>
+</li>
+</ul>
+<h3 id="容错-高可用"><a href="#容错-高可用" class="headerlink" title="容错&amp;高可用"></a>容错&amp;高可用</h3><p>​	这个章节也没有特别新颖的东西，主要介绍了几个产品怎么做Failover 和保证EactlyOnce。主要有两点：</p>
+<ol>
+<li>流系统内部的状态回复和回滚：主要思路都是回滚到某一个位点然后做Replay来确保整个状态一致。各家做法主要是在RecoveryData可能粒度会有区别，主要看系统从哪里可以Replay数据（如果是源头，那就需要全局都restore到一个统一位点；如果系统内部有额外记录一些可Replay的中间数据，是可以考虑从中间状态做Replay，但是要考虑怎么保证runtime性能和全局一致）</li>
+<li>外部系统怎么确保数据一致：因为一般来说外部系统不太可做回撤或者写入两次能不能保证幂等。常规的处理方式也有两三类：<ol>
+<li>Transaction-based ： 这种模式下主要产品是Millwheel [10] and Trident [3]， 他们通过给每一条记录一个唯一id或者一批数据一个唯一事务ID。写入时相同pk忽略相同的entry，保证幂等；Trident貌似事务是有序的，然后通过定位原来的transcation-id来精准忽略数据。</li>
+<li>Progress-based： Seep [56] 使用时间戳来保证。每个运算符都会生成递增的标量时间戳，并将它们附加到记录中。 Seep 给每个算子的State和输出，以及影响该算子状态的每个上游算子的最新的消息打时间戳做checkpoint。在恢复的时候，加载最新的checkpoint到一个全新的算子，然后该算子Replay 已经存下来的输出记录并处理由其上游算子发送的Replay消息，下游算子根据时间戳丢弃重复记录。 该系统假设确定性计算没有副作用，并且单调增加的逻辑时钟提供时间戳而且还假设流中的记录按其时间戳排序。</li>
+<li>Lineage-based：Timestream [111] 和 Streamscope [76] 使用依赖跟踪来提供Exactly-Once。在正常操作期间，两个系统都通过使用序列号唯一标识记录来跟踪Operator输入和输出依赖关系。 两个系统都以异步方式定期存储算子血缘关系。然而，在 Streamscope 中，每个算子不仅单独检查其依赖项，还单独检查其状态。<ol>
+<li>在恢复时，Timestream 通过递归地联系上游节点来检索失败运算符的依赖关系，直到重建State所需的所有输入都可用。 Streamscope 遵循类似的过程，但从失败的算子的检查点快照开始，对于在持久存储中找不到该快照中的每个输入序列号，Streamscope 会联系上游运算符，上游运算符可能必须从最相关的快照开始重新计算记录，该快照可以在给定序列号的情况下生成输出记录。</li>
+<li>最后，两个系统都会GC来丢弃过时的。</li>
+</ol>
+</li>
+<li>External sinks： Flink 和Spark 这种通过一个外部算子的接口来实现，通过外部算子的特性来实现幂等或者二阶段提交接口。</li>
+</ol>
+</li>
+<li>paper里面最后还说了说利用不同方式来实现HA，这部分我不是特别感性起就快速掠过了。</li>
+</ol>
+<h3 id="负载管理-弹性-重配置"><a href="#负载管理-弹性-重配置" class="headerlink" title="负载管理 &amp; 弹性 &amp; 重配置"></a>负载管理 &amp; 弹性 &amp; 重配置</h3><p>这个章节主要提到几个点，实在是太冗长了，这两个还没涉及到到时候再细致研究。</p>
+<ul>
+<li><p>反压机制： 为了解决如果流速增然增大可能导致系统性能大规模回退或者血崩</p>
+</li>
+<li><p>弹性扩缩容 &amp; 重配置： 这里主要是说明整个State如果管理怎么迁移,怎么做扩缩容。</p>
+</li>
+</ul>
+
+      </div>
+      
+      
+      
+    </div>
+    
+
+    
+    
+    
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%B5%81%E8%AE%A1%E7%AE%97%E7%B3%BB%E7%BB%9F%E7%AE%80%E4%BB%8B"><span class="nav-number">1.</span> <span class="nav-text">流计算系统简介</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%89%8D%E8%A8%80"><span class="nav-number">2.</span> <span class="nav-text">前言</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%B5%81%E8%AE%A1%E7%AE%97%E7%9A%84%E7%89%B9%E7%82%B9%E4%B8%8E%E8%A6%81%E6%B1%82"><span class="nav-number">2.1.</span> <span class="nav-text">流计算的特点与要求</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E4%B8%BB%E8%A6%81%E6%9E%B6%E6%9E%84%E5%AF%B9%E6%AF%94"><span class="nav-number">3.</span> <span class="nav-text">主要架构对比</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#out-of-order-processing"><span class="nav-number">4.</span> <span class="nav-text">out-of-order processing</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%95%B0%E6%8D%AE%E4%BF%AE%E6%AD%A3"><span class="nav-number">4.1.</span> <span class="nav-text">数据修正</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%90%84%E4%B8%AA%E4%BA%A7%E5%93%81"><span class="nav-number">4.2.</span> <span class="nav-text">各个产品</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#State-Management"><span class="nav-number">5.</span> <span class="nav-text">State Management</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E5%85%B7%E4%BD%93%E4%BA%A7%E5%93%81"><span class="nav-number">5.1.</span> <span class="nav-text">具体产品</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E4%BD%9C%E8%80%85%E6%8F%90%E5%87%BA%E7%9A%84%E9%97%AE%E9%A2%98"><span class="nav-number">5.2.</span> <span class="nav-text">作者提出的问题</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%AE%B9%E9%94%99-%E9%AB%98%E5%8F%AF%E7%94%A8"><span class="nav-number">6.</span> <span class="nav-text">容错&amp;高可用</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E8%B4%9F%E8%BD%BD%E7%AE%A1%E7%90%86-%E5%BC%B9%E6%80%A7-%E9%87%8D%E9%85%8D%E7%BD%AE"><span class="nav-number">7.</span> <span class="nav-text">负载管理 &amp; 弹性 &amp; 重配置</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">Yifei Wu</p>
+  <div class="site-description" itemprop="description">开发心路历程笔记本</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">1</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://x.com/FeigeeWu" title="Twitter → https:&#x2F;&#x2F;x.com&#x2F;FeigeeWu" rel="noopener" target="_blank"><i class="fab fa-twitter fa-fw"></i>Twitter</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="https://www.zhihu.com/people/eager-wu" title="Zhihu → https:&#x2F;&#x2F;www.zhihu.com&#x2F;people&#x2F;eager-wu" rel="noopener" target="_blank"><i class="fa-hand-o-right fa-fw"></i>Zhihu</a>
+      </span>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2024</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">Yifei Wu</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>

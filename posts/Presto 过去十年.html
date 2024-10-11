@@ -1,0 +1,481 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"always","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":false,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
+  </script>
+
+  <meta name="description" content="​		从**&lt;Presto: A Decade of SQL Analytics at Meta&gt;&gt;**这篇文章可以看出大厂数据仓库，在过去十年中的演进和发展趋势。特别从Meta的角度来看，主要体现出以下几个特点：  多元化的工作负载：Presto集群上的工作负载种类日益丰富，已从简单的报表和A&#x2F;B测试等基础业务，转向需要轻量级ETL的复杂场景，涵盖更多的Ad-hoc分">
+<meta property="og:type" content="website">
+<meta property="og:title" content="飞哥编程笔记">
+<meta property="og:url" content="http://example.com/posts/Presto%20%E8%BF%87%E5%8E%BB%E5%8D%81%E5%B9%B4.html">
+<meta property="og:site_name" content="飞哥编程笔记">
+<meta property="og:description" content="​		从**&lt;Presto: A Decade of SQL Analytics at Meta&gt;&gt;**这篇文章可以看出大厂数据仓库，在过去十年中的演进和发展趋势。特别从Meta的角度来看，主要体现出以下几个特点：  多元化的工作负载：Presto集群上的工作负载种类日益丰富，已从简单的报表和A&#x2F;B测试等基础业务，转向需要轻量级ETL的复杂场景，涵盖更多的Ad-hoc分">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2024-10-11T06:49:45.044Z">
+<meta property="article:modified_time" content="2024-10-11T06:49:45.044Z">
+<meta property="article:author" content="Yifei Wu">
+<meta property="article:tag" content="数据库 分布式 OLAP">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/posts/Presto%20%E8%BF%87%E5%8E%BB%E5%8D%81%E5%B9%B4">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : false,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title> | 飞哥编程笔记
+</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">飞哥编程笔记</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">阿飞学习备忘录</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+  </ul>
+</nav>
+
+
+
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+  
+  
+
+          <div class="content page posts-expand">
+            
+
+    
+    
+    
+    <div class="post-block" lang="zh-CN">
+      <header class="post-header">
+
+<h1 class="post-title" itemprop="name headline">
+</h1>
+
+<div class="post-meta">
+  
+
+</div>
+
+</header>
+
+      
+      
+      
+      <div class="post-body">
+          <p>​		从**&lt;Presto: A Decade of SQL Analytics at Meta&gt;&gt;**这篇文章可以看出大厂数据仓库，在过去十年中的演进和发展趋势。特别从Meta的角度来看，主要体现出以下几个特点：</p>
+<ol>
+<li><strong>多元化的工作负载</strong>：Presto集群上的工作负载种类日益丰富，已从简单的报表和A&#x2F;B测试等基础业务，转向需要轻量级ETL的复杂场景，涵盖更多的Ad-hoc分析以及更高级的<strong>机器学习特征工程提取、图形分析</strong>和隐私计算存储。值得注意的是，Meta与机器学习相关的数据量已经超过了传统的分析数据量，机器学习工程师们开始利用Presto或SparkSQL这样的分析引擎，从原始数据中提取特征以供训练使用。</li>
+<li><strong>SQL业务统一入口</strong>：Presto逐渐演变为Meta中SQL业务的统一入口，其他查询引擎则逐步被淘汰或停用，从而简化了数据查询的流程。</li>
+<li><strong>更快的响应速度和更高的稳定性</strong>：为了确保服务的高可用性，系统对响应速度和稳定性提出了更高的要求。</li>
+</ol>
+<p>为了应对上述需求，Presto的技术架构在以下几个方向上做出了相应的发展，这些进展不仅提升了数据处理能力，也为Meta的业务发展打下了坚实的基础。</p>
+<ol>
+<li><p><strong>引入Presto On Spark</strong>：支持大规模ETL任务和向量特征提取等业务，显著提升了整体ETL任务的稳定性。引入多coordinator来提高系统稳定性。</p>
+</li>
+<li><p><strong>采用Velox等C++原生引擎</strong>：为查询性能提供更高效的支持，同时增加多层次的数据缓存和元数据缓存功能，以进一步提升查询性能。</p>
+</li>
+<li><p><strong>支持UDF，User-defined types</strong></p>
+</li>
+</ol>
+<p>下面是基于原文的一些具体介绍和说明。</p>
+<h2 id="1-引言"><a href="#1-引言" class="headerlink" title="1 引言"></a>1 引言</h2><p>在Meta内部，Presto被广泛用于交互式、临时性和大规模的提取-转化-加载（ETL）工作负载。使用案例包括仪表盘展示、A&#x2F;B测试、临时分析、数据清洗和转换。随着将所有SparkSQL工作负载迁移到Presto，Presto很快将成为公司唯一的SQL接口。</p>
+<ul>
+<li>尽管Presto最初是为交互式SQL查询的内存处理而设计的，但Meta的一些趋势挑战了其能力。由于Presto的高效性，员工开始将其用于轻量级ETL工作负载，这些工作负载的运行时间可长达数十分钟，随着数据的急剧增长，Presto的性能变得越来越慢。</li>
+<li>向更灵活和弹性的资源管理模式转型，采用更小的、短暂的容器，导致了可靠性的降低。</li>
+<li>虽然对更丰富的分析需求在增长，比如机器学习特征工程和图形分析，但这些并未得到良好的支持。</li>
+<li>遵循Meta的数据隐私政策需要新的数据抽象和存储机制，以高效地支持隐私执行。</li>
+</ul>
+<p>本文的主要关注点是描述我们如何改进Presto的架构以应对这些挑战，从以下三个角度进行探讨。</p>
+<p>首先是<strong>延迟和效率</strong>。随着数据量的增加，相同查询的扫描成本增加，导致等待时间更长。在集群中的机器的RPC连接数量不能无上限地增加，添加更多的机器到集群会达到一个上限。此外，使用的机器越多，单台机器故障的概率也会增加。需要其他延迟改善措施，以确保用户在进行大规模数据扫描时仍能获得低延迟的仪表盘体验。特别是对于重要的仪表盘，用户期望Presto的性能就像数据已经被修剪或存储在内存中一样，能够进行任意切片和切块。</p>
+<p>其次是<strong>可伸缩性和可靠性</strong>。SQL是Meta ETL工作负载的首选，这推动了Presto的普及。由于Presto不提供容错能力且内存受硬件限制，需要新的方法来支持比目前Presto所支持的CPU、内存和运行时间大几个数量级的ETL工作负载。此外，Meta已调整容器分配，使其在小内存占用下更加灵活可管理。弹性允许在公司不同类型的工作负载之间平衡高峰和低峰使用的能力。然而，随着机器的任意故障，这也带来了复杂的挑战。考虑到这些限制，新的设计原则需要使工作负载能够处理任意大的内存消耗和任意长的运行时间，尽管基础设施不稳定。</p>
+<p>最后，<strong>需求超出了数据分析的范畴</strong>。现代数据仓库已转变为数据湖，以根据各种使用案例的需求来使用数据。一个典型的用例是机器学习特征工程。Meta与机器学习相关的数据量已经超过了分析数据量。机器学习工程师利用像Presto或SparkSQL这样的分析引擎从原始数据中提取特征以供训练使用。隐私也是一个重要要求。Facebook、Instagram和WhatsApp的用户可以选择不用于内容推荐或其他用途的个人数据，针对Meta已收集的数据。Presto正在努力确保数据得到妥善保护。此外，Meta涉及社交图谱。我们看到用户要求通过Presto进行SQL类似的图分析，以在数十亿个节点和边中表达复杂逻辑。</p>
+<h2 id="2-架构与挑战"><a href="#2-架构与挑战" class="headerlink" title="2 架构与挑战"></a>2 架构与挑战</h2><p>![image-20240814114303317](&#x2F;Users&#x2F;yifei&#x2F;Library&#x2F;Application Support&#x2F;typora-user-images&#x2F;image-20240814114303317.png)</p>
+<p>![image-20240814114332558](&#x2F;Users&#x2F;yifei&#x2F;Library&#x2F;Application Support&#x2F;typora-user-images&#x2F;image-20240814114332558.png)</p>
+<p>图2展示了新的Presto架构的高层次概念。当查询发送到Presto集群时，它可以在以下两种架构上运行：(1) 原始Presto架构，但使用多个<code>Coordinator</code>以避免单点故障，原生向量化执行以提升性能，使用闪存上的数据缓存以避免I&#x2F;O瓶颈，并进行了多项其他改进，接下来将在论文中讨论，或(2) Presto on Spark，利用Spark作为运行时，Presto作为评估库以实现可扩展性。在这两种架构中，我们提供<strong>物化视图</strong>以提高查询性能，并为机器学习特征工程和隐私用例提供数据的可变性。此外，这两种架构都可以将<strong>内存数据Spill到临时存储</strong>中以克服内存限制。</p>
+<p>​	引入了额外的元数据。<strong>类型存储</strong>用于支持用户定义的类型，<strong>函数存储</strong>用于支持SQL函数的创建和评估，<strong>统计存储</strong>用于更好的优化决策。<strong>远程函数</strong>用于运行用户定义的函数。</p>
+<h2 id="3-延迟改进"><a href="#3-延迟改进" class="headerlink" title="3 延迟改进"></a>3 延迟改进</h2><p>随着数据的增长，查询延迟自然会恶化。本节介绍了几项增强Presto的措施，以从CPU、I&#x2F;O和内存的角度提高延迟。</p>
+<h3 id="3-1-缓存"><a href="#3-1-缓存" class="headerlink" title="3.1 缓存"></a>3.1 缓存</h3><p>分离存储使得计算可以扩展和独立。然而，分离会对查询延迟带来新的挑战，因为在网络饱和时，扫描大量数据或元数据可能会受到I&#x2F;O的限制。为了解决这个问题，我们在各个级别引入了缓存。在本文的其余部分中，我们使用“文件”的概念来表示物理存储在远程存储中的数据切片。</p>
+<ul>
+<li><p><strong>原始数据缓存</strong>：在工作节点上的本地闪存设备上的数据缓存可以帮助减少来自远程存储节点的I&#x2F;O时间。Presto工作节点将在读取时将远程数据以其原始形式（压缩且可能加密）缓存到本地闪存。如果将来有一个覆盖可以在本地闪存上找到的范围的读取请求，则该请求将直接返回结果。缓存单位与对齐的大小相同，以避免碎片。例如，如果读取请求覆盖范围[2.3MB, 4.5MB)，Presto会发出范围[2MB, 5MB)的远程读取，并缓存以及为[2MB, 3MB)、[3MB, 4MB)和[4MB, 5MB)的块建立索引。对于任何将来与[2MB, 5MB)重叠的读取，该重叠部分将直接从本地磁盘获取。对这些缓存单位的驱逐策略是LRU（最近最少使用）。</p>
+</li>
+<li><p><strong>分片结果缓存</strong>：此外，一个正在运行叶子阶段的任务可以决定在本地闪存上缓存部分计算结果。这是为了防止多个查询之间重复计算。一个典型的方法是在叶子阶段缓存计划片段的结果，进行一次扫描、过滤、投影和&#x2F;或聚合。例如，用户可能决定查询过去1天的聚合结果。后来，他们可能会调整仪表板以查看过去3天的聚合结果。那么，对于第二个查询，我们可以通过缓存来自第一个查询的1天结果，避免重复计算。只需扫描和部分聚合剩余的2天数据即可。请注意，分片结果是基于叶子查询片段的，其可以高度变化，因为用户可以调整过滤器或投影。为最大化缓存命中率，即使用户频繁更改过滤器或投影，我们依赖基于统计的规范化。规范化首先对不同变量名进行同构映射，使得不同别名但含义相同的查询最终得到相同的计划。然后，排序表达式，以便像a &gt; b和b &lt; a这样的表达式具有相同的格式。最后，剔除过滤器中的谓词。鉴于过滤器的形式为谓词的结合，谓词剪枝通过移除所有在𝜙中满足的谓词生成新的过滤器。值得注意的是，该方法不限于结合，其他通用表示（如析取）也是适用的。由于每个工作节点只读取部分数据，它可以在运行时修剪比在计划时<code>Coordinator</code>更多的过滤器谓词。对于工作节点读取的文件，工作节点采用文件的统计信息（通常是最小值和最大值）来检查统计范围是否满足某些谓词或否。工作节点将删除在过滤器中完全满足的谓词，或者如果有任何不满足的谓词，将整个过滤器评估为False。</p>
+</li>
+<li><p><strong>元数据缓存和目录服务器</strong>：还在<code>Coordinator</code>和工作节点上引入了各种元数据级缓存。热点数据，如文件索引（在其他上下文中也称为“页脚”或“头部”）被缓存到内存中。可变元数据，如表模式或文件路径，缓存时采用版本控制。在<code>Coordinator</code>中还有一个选项，将元数据缓存托管在目录服务器上。为了进一步扩展缓存，可以选择将元数据缓存托管在目录服务器上。目录服务器可以作为独立的部署存在，也可以与<code>Coordinator</code>共置。然而，在Meta，我们不使用独立的目录服务器，以避免部署碎片化。</p>
+</li>
+<li><p><strong>缓存局部性</strong>：为了最大化工作节点（在内存或本地闪存中的缓存命中率），<code>Coordinator</code>需要通过哈希函数将同一文件的读取请求调度到同一工作节点。为了避免热点工作节点，调度器会在必要时回退到其次选工作节点用于缓存或跳过缓存。可以使用多种哈希策略，例如简单的模哈希或一致性哈希。相同的逻辑也适用于查询路由。由于Presto在多个数据中心全球部署，路由器会将查询重定向到具有缓存数据的集群，并在必要时采取热点防止措施。</p>
+<p>通过实施上述所有机制，我们能够在Meta完全弃用与存储协同的连接器（如Raptor [44]）和内存数据库（如Cubrick [40]），提供同样或更快的查询延迟。更多细节，包括TPC-H基准测试，可以在我们的博客中找到 [1, 29]。</p>
+</li>
+</ul>
+<h3 id="3-2-本地向量化执行"><a href="#3-2-本地向量化执行" class="headerlink" title="3.2 本地向量化执行"></a>3.2 本地向量化执行</h3><pre><code> Presto是用Java编写的。这不仅妨碍了精确的内存管理，还使我们无法利用现代向量化CPU执行，例如SIMD。Velox [41]是一个最初源于Meta的Presto项目，旨在支持C++向量化执行。它后来成为一个通用的向量化执行库，可为机器学习加速等用例带来好处。
+</code></pre>
+<p>​	Presto与Velox紧密集成，以利用向量化执行。为了托管C++库，构建了本地C++ Worker Node，直接与<code>Coordinator</code>通信。数据的 Shuffle和I&#x2F;O 采用本地Velox格式，因此无需在转换为Presto格式时没有额外的开销。当查询开始时，<code>Coordinator</code>会将查询计划片段调度到C++工作节点。<strong>工作节点接收计划片段并将其转换为Velox计划</strong>。在接收到Velox计划时，将在C++工作节点内部生成本地线程，以充分利用内存的可用性。</p>
+<p>​	在Velox的执行线程内，函数、表达式和I&#x2F;O以向量化的方式执行。简单的表达式针对多个值进行一次评估，通过SIMD执行。Velox与Presto的类型和函数语义兼容，因此相同的函数签名可以在Java和C++执行时产生相同的结果。</p>
+<h3 id="3-3-自适应过滤"><a href="#3-3-自适应过滤" class="headerlink" title="3.3 自适应过滤"></a>3.3 自适应过滤</h3><p> 高效的剪枝 对于用户可以任意切片和切块的维度至关重要。本节介绍过去几年在Presto中新构建的过滤和剪枝技术。</p>
+<p>​	<strong>子字段修剪</strong>：现代数据仓库广泛使用<strong>复杂类型，如Map、Array和Struct</strong>。例如，机器学习工作负载通常生成具有成千上万嵌入特征的大型<strong>Map</strong>，这些特征存储在表列中。复杂类型实例的子字段，表示为𝜏，指的是𝜏内嵌套的元素。例如，如果𝜏是数组类型实例，那么𝜏[2]指的是𝜏的第二个子字段。值得注意的是，子字段可以递归嵌套，具体取决于所涉及的类型。有效提取子字段而不读取整个复杂对象对于CPU效率至关重要。Presto支持子字段修剪，通过向读取器信号所需的复杂对象的索引或键。根据列式格式（如ORC [38] 或 Parquet [39]），读取器将跳过未使用的子字段。在数组类型实例𝜏的之前例子中，仅从磁盘读取𝜏[2]；𝜏的所有其他索引都将被跳过。修剪是递归的，以支持任意层级的嵌套。</p>
+<p>​	<strong>自适应过滤重排</strong>：除了子字段修剪之外，过滤下推是一种常见的策略，通过在扫描时应用过滤，从而减少扫描大小，这样一些列或行就不必物化，即使它们在查询计划中被明确要求。在各种情况下，一些过滤比其他过滤更有效；它们在更少的CPU周期内丢弃更多行。在运行时，Presto自动对过滤器进行重新排序，以便在评估时优先考虑更具选择性的过滤器。在读取任何数据之前，每个过滤器内的函数都将初始化为（1）“CPU周期估计”，该估计基于函数的参数量和输入类型计算，以及（2）固定选择性。当读取器开始扫描和过滤数据时，每个函数的选择性进行分析，并且CPU周期估计会根据实际CPU周期进行调整。在运行时，过滤器内函数的顺序会根据其选择性与平均CPU周期的乘积动态重新排序。随着扫描过程中数据的变化，选择性和CPU周期不断调整，以自适应地重新排序过滤器。</p>
+<p><strong>基于过滤的延迟物化</strong>：在对一组过滤器应用某种顺序时，Presto会跟踪满足过滤谓词的行。对于在该批次中未通过早期过滤器的行，无需评估或甚至物化满足其他过滤器所需的列的行。例如，如果我们对列col1和col2应用过滤器“col1 &gt; 10 AND col2 &#x3D; 5”，首先将在所有行中评估col1 &gt; 10，此时必须物化。然而，仅对在col1中通过col1 &gt; 10的行，需要在评估col2 &#x3D; 5时物化col2的行。这是在大多数现代数据库中实现的一项技术。然而，在文献[44]中未被引入。生产中的整体过滤改进的收益将在第7节中详细说明。</p>
+<p><strong>Dynamic join filtering：</strong>在 Presto 中，过滤器下推的功能能够通过“动态连接过滤”进一步增强。对于内连接，构建方可以提供以布隆过滤器、范围或唯一值的格式表示的“摘要”，以供探测方作为过滤器使用。通过上述框架，这个摘要可以在扫描过程中被下推，从而在探测方读取数据时，避免物化那些不匹配连接键的数据。摘要的格式取决于构建方的唯一值数量，因此摘要的大小应该小且在过滤方面相对有效，但又不能“过拟合”。</p>
+<h3 id="3-4-物化视图与近实时数据"><a href="#3-4-物化视图与近实时数据" class="headerlink" title="3.4 物化视图与近实时数据"></a>3.4 物化视图与近实时数据</h3><p>数据仓库通常以列式格式以增量方式每小时或每天写入数据。写入的数据在时间增量通过后变得不可变。历史上，Presto 只能读取不可变数据。然而，最近我们扩展了读取正在流入的数据的能力，以提供近实时（NRT）支持。为了满足低延迟和数据新鲜性的要求，物化视图功能被集成到 Presto 中。</p>
+<p>当 Presto 创建物化视图时，将生成一个自动作业来物化视图的数据。只要一些基表的数据（通常是几个小时或几天）变得不可变，自动作业就会运行视图查询以物化视图数据。另一方面，连续到来的 NRT 数据在变得不可变之前不会被物化为视图。<strong>当用户查询物化视图时，Presto 会识别出视图中已物化的部分和未物化的部分。此时，Presto 将查询拆分为一个 UNION ALL 查询，以将物化数据与来自基表的非物化新鲜数据结合起来。这使得查询能够同时提供新鲜度和因数据量减少而降低的延迟</strong>。</p>
+<p>物化视图的另一个使用案例是<strong>子查询优化</strong>。给定一个查询，Presto 会检索与被查询表相关的所有物化视图。Presto 尝试匹配这些物化视图是否为接收到的查询的子查询。如果有匹配，则接收到的查询将重写为利用物化视图，而不是从基表中获取数据。目前支持的查询模式仅允许扫描、过滤、投影和聚合。支持的聚合函数包括 SUM、MIN、MAX、AVG、COUNT 等。</p>
+<p>由于物化视图仅在 Meta 向试点用户推出，并未普遍可用。</p>
+<h3 id="4-可扩展性改进"><a href="#4-可扩展性改进" class="headerlink" title="4. 可扩展性改进"></a>4. 可扩展性改进</h3><p>Presto 被越来越多地用于支持大型 ETL 作业。当进入数小时的运行时间和 PB 大小的扫描时，原始的 Presto 架构无法充分扩展。为了解决<strong>单点故障、工作节点崩溃、数据偏斜和内存限制</strong>等问题，各种改进和再架构已经整合到 Presto 中。</p>
+<h4 id="4-1-多Coordinator"><a href="#4-1-多Coordinator" class="headerlink" title="4.1 多Coordinator"></a>4.1 多<code>Coordinator</code></h4><p><code>Coordinator</code>一直是 Presto 的单点故障。这对于长时间运行的查询尤其具有挑战性，尤其在高峰时段，成千上万的查询可能在<code>Coordinator</code>中排队。<code>Coordinator</code>的崩溃意味着所有查询将失败。从可扩展性的角度来看，水平扩展一个<code>Coordinator</code>会受到并行运行的查询数量的限制，因为查询调度需要占用非微不足道的内存和 CPU。此外，Meta 的基础设施设计趋向于使用内存较小的容器，目前所有的查询排队、查询调度和集群管理无法使用较小的内存完成。</p>
+<p>![image-20240814171457635](&#x2F;Users&#x2F;yifei&#x2F;Library&#x2F;Application Support&#x2F;typora-user-images&#x2F;image-20240814171457635.png)</p>
+<p>​	Presto 通过<strong>分离查询和集群的生命周期</strong>解决了这个问题。<code>Coordinator</code>仅控制查询的生命周期，而新引入的资源管理器则负责集群的排队和资源使用监控。图 5 展示了多<code>Coordinator</code>和多资源管理器架构的拓扑，这些原本都存在于单个<code>Coordinator</code>中。</p>
+<p>​	查询首先被发送到任意<code>Coordinator</code>。各<code>Coordinator</code>是相互独立的，没有相互之间的通信。查询会在可选情况下发送到资源管理器进行排队，资源管理器是高可用的。所有的排队查询和集群控制面板信息在所有实例之间进行复制。采用 Raft 等共识协议，确保了即使资源管理器崩溃，也不会导致已排队查询的任何损失。<code>Coordinator</code>会定期从资源管理器获取排队信息，以决定执行哪些查询。如果<code>Coordinator</code>发现资源管理器中没有已排队的查询，或者排队的查询优先级较低，它可以决定执行新提交的查询，以避免排队开销或网络延迟。</p>
+<p>​	引入多个<code>Coordinator</code>不仅消除了单点故障，还克服了弹性能力的问题，以及 Meta 基础设施推动使用较小容器的需求。现在，<code>Coordinator</code>或资源管理器可以更频繁地被解除分配，而无需保留排队状态数小时。</p>
+<h4 id="4-2-可恢复分组执行"><a href="#4-2-可恢复分组执行" class="headerlink" title="4.2 可恢复分组执行"></a>4.2 可恢复分组执行</h4><p>Presto架构通过<code>streaming RPC shuffle and in-memory data processing</code>优化了延迟。然而，当涉及到<strong>PB级扫描或运行时间达到数小时的ETL查询时，其在内存限制上的可扩展性并不理想，并且在某种程度上无法保证没有工作节点崩溃</strong>。为了支持任意大型查询，我们开发了可恢复分组执行（更多详细信息可参见我们的博客[8]）。</p>
+<p>在数据仓库中，数据通常是分区的。例如，数据可能按天归档，因此“天”成为了一个自然的分区。这也可以扩展到其他类型的分区，比如对模值哈希或Z-ordering的支持。具有相同分区键（由表列表示）的行属于同一分区。图6展示了一个哈希分区的示例，其中表根据列col1进行分区，哈希函数为mod(3)，因此形成了3个分区。</p>
+<p>![image-20240814175047694](&#x2F;Users&#x2F;yifei&#x2F;Library&#x2F;Application Support&#x2F;typora-user-images&#x2F;image-20240814175047694.png)</p>
+<p>在Presto中，如果在表扫描之后，第一个聚合、连接或窗口函数的键是数据分区键的超集，那么查询可以以“分组”的方式执行。在这种情况下，引擎不会扫描整个数据集并根据聚合、连接，或窗口函数的键进行重组，而是只会按照分区逐个扫描，因为这些键在各个分区之间是互不重叠的。继续以图6为例，假设用户有一个查询“SELECT COUNT() from table1 GROUP BY col1”。一个普通的扫描将并行读取所有3个分区，并根据聚合键col1进行重组。然后，聚合阶段将在内存中接收所有7个不同的值，以便最后输出聚合结果。相反，分组执行将一次扫描一个分区。由于分区键col1与查询中的聚合键col1相同，系统将首先扫描分区1中的所有内容，并在内存中构建一个仅包含3个不同值（1、4和7）的哈希表，然后为这3个值输出最终结果。接着，它将继续处理分区2和3的各两个值。这样，峰值内存使用将小于并行扫描所有数据。</p>
+<p>分组执行可以扩展到第一个重组之后，或当数据未按照聚合、连接或窗口函数的键进行分区时。实现这个的方法是通过插入一个<code>shuffle</code>，以基于下游键将源数据物化为分区的方式。这种方法的好处是允许分组执行适用于任意查询以及任意源数据。缺点则是中间数据物化的开销。</p>
+<p>有了中间数据的物化，我们进一步构建了在<code>Shuffle</code>的边界上，对分组执行失败恢复的支持 。如果一个工作节点崩溃，调度器将直接从物化的中间数据重新运行失败的执行，而不是从源数据重新运行。从架构的角度看，也可以支持在重组之前使用故障容错的本地磁盘或分布式分离重组服务（例如Cosco [25]集成）进行更细粒度的恢复。</p>
+<h4 id="4-3-Presto-on-Spark"><a href="#4-3-Presto-on-Spark" class="headerlink" title="4.3  Presto on Spark"></a>4.3  Presto on Spark</h4><p>可恢复分组执行使Presto克服了内存限制，并支持了故障恢复。虽然故障恢复边界在重组点，可能会过于粗略，但有一些成熟的通用数据计算引擎提供了内置的故障恢复机制，具备更细粒度的支持。Spark [57]就是其中之一。Spark提供了弹性分布式数据集（RDD），这是一个在集群节点之间分区的元素集合，可以并行操作。RDD能够自动从容器或任务失败中恢复。基于Spark的Presto是一种新的架构，完全摆脱了现有的Presto集群拓扑，并实现了多租户支持。它利用Presto作为库，在Spark RDD接口上运行为其提供可扩展性和可靠性，而无需额外成本。</p>
+<p>![image-20240814175637277](&#x2F;Users&#x2F;yifei&#x2F;Library&#x2F;Application Support&#x2F;typora-user-images&#x2F;image-20240814175637277.png)</p>
+<p><strong>Presto在Spark架构中，使用Spark的调度、重组、资源管理和任务执行，替代了Presto内置的这些组件，如图8所示</strong>。要启动一个Presto在Spark上的查询，Spark首先在其进程中启动一个简化的<code>Presto Coordinator</code>，将其作为库来解析和优化查询。该简化协调者随后将发现所有必要的任务，并将其与优化后的物理计划一起编译成RDD任务，这些任务将被<strong>发送到Spark进行调度</strong>。RDD任务实例包含原始的Presto计划片段。一旦被调度，RDD执行线程将在简化的Presto工作节点上运行，作为基于Presto计划片段的库。外部重组执行将在工作节点上实现，以利用外部重组服务。外部重组服务可以避免在连接限制和故障边界方面RPC重组的短缺。如果容器崩溃，Spark集群管理器将自动重试RDD线程。</p>
+<p>协调者和工作者等服务作为库，这些库之间不进行通信，也不管理内存、线程或网络。这些方面都被从库中去除，以简化处理，并委托给 Spark 集群。需要注意的是，<strong>我们仅在 RDD 级别及以下使用 Spark，而不使用 SparkSQL，</strong>因为我们需要保证 Presto 的语言语法和语义的一致性。在 Meta，最初同时使用 Presto 和 SparkSQL（以及 Meta 内部的语法变体）来运行 ETL 作业。然而，两者之间的语言差异导致了高用户摩擦。Presto on Spark 项目旨在统一使用 Presto 的语言语义以及来自 Spark 的可扩展性和可靠性。</p>
+<p>Presto on Spark 和可恢复分组执行都旨在解决可扩展性和可靠性挑战。可恢复分组执行仍然利用多租户模式，提供更灵活的内存和 CPU 利用率。另一方面，Presto on Spark 则提供容器级的隔离，能够提供更好的可扩展性和可靠性。在 Meta 的生产环境中，由于弹性容量的不确定性，容器会频繁被排空，以平衡高峰和低峰的使用情况。因此，对于长时间运行的作业，恢复能力是一个强烈的需求，以处理容器的离线情况。更多详细信息请参考我们的博客。</p>
+<p>从 2022 年初开始，Meta 开始将所有 SparkSQL 工作负载迁移到 Presto on Spark，以统一 SQL 接口。SparkSQL 堆栈的解析器、分析器、优化器和操作执行层将完全弃用，只有 Spark RDD 接口保留，因为它是 Presto on Spark 的一个主要组件。我们还在努力替换可恢复分组执行，因为在生产环境运行多年后，它的可扩展性不如 <strong>Presto on Spark</strong>。</p>
+<h4 id="4-4-Spill"><a href="#4-4-Spill" class="headerlink" title="4.4 Spill"></a>4.4 Spill</h4><p>尽管 Presto 具有前面提到的两种可扩展选项来克服集群范围内的内存限制，但数据倾斜仍可能发生，导致单个工作节点超出本地工作节点内存限制。<strong>随着 Meta 逐渐向更小的内存容器转型以提高弹性，这一问题变得尤为严重</strong>。Presto 中实现了溢出，旨在将内存中的哈希表（用于聚合、连接、窗口函数和 topN 操作）物化到磁盘。与依赖操作系统将内存页面交换到磁盘不同，应用层的溢出可以更精确地控制查询执行。在 Meta，交互式和自助式的工作负载将数据溢出到本地闪存以降低延迟，而 ETL 工作负载则将数据溢出到远程存储以提高可扩展性。</p>
+<p>一旦在构建哈希表时达到内存限制，每个哈希表将根据哈希键进行排序并序列化到磁盘。然后，查询将继续处理，仿佛哈希表是空的。每当哈希表再次增长到限制时，将重复相同的过程，直到所有数据被处理完毕。然后，将对这些已排序的哈希表进行外部合并，以限制发出结果时的内存使用。需要注意的是，内存中的哈希和溢出解决的技术在行业中是众所周知的。</p>
+<h3 id="5-效率提升"><a href="#5-效率提升" class="headerlink" title="5. 效率提升"></a>5. 效率提升</h3><p>除了延迟和可扩展性的改善，效率对查询性能也至关重要。本节将展示我们在提高效率方面所做的几个增强。</p>
+<h4 id="5-1-CBO"><a href="#5-1-CBO" class="headerlink" title="5.1 CBO"></a>5.1 CBO</h4><p>优化器对查询引擎至关重要。适当的计划可以在集群中最好地利用资源。Presto 具有成本基础优化器，通过给 CPU、IO 和内存分配成本来平衡这些因素，从而生成优化的计划。具体来说，成本基础优化用于决策（1）连接类型选择，包括广播连接和再分配连接；（2）连接重排序，以最小化整体内存使用。目标是充分利用内存，同时提供 CPU 效率而不超过内存限制。然而，对于广播连接，它还可以提供更低的延迟和更少的 CPU 周期。因此，目标是尽量减少内存使用，以优化 CPU 性能。</p>
+<p>为做出正确的判断，需要外部信息来估算成本。在 Meta，每个表分区都会存储统计信息，以描述数据分布；这里的分区是根据先前的章节定义的。所有将数据写入数据仓库的服务（包括 Presto）都有责任计算并发布分区统计信息到元数据存储。这些统计信息会随着对应分区的删除而被丢弃。常见的统计信息包括直方图、总值计数、独特值计数、空值计数、最小值、最大值等。这些统计信息有助于估算滤波选择性，以估计在过滤器后输入表的基数，也有助于估算连接表的大小以进行内存估算。在计划阶段，成本基础优化器将利用输入表的统计信息，并从计划的叶子节点到根节点填充成本估算，进而调整计划，以生成最小成本。</p>
+<p>图表（a）展示了实施成本基础优化后生产集群的 ETL 查询的 CPU 减少情况。60%的此类查询改变了计划，并降低了其 CPU 使用。柱状图显示启用成本基础优化的查询与未启用优化的同一组查询的 CPU 比率。绝大多数查询的 CPU 效率得到了改善（以比率 ≤ 1 的区域表示）。尽管有些查询在启用成本基础优化后 CPU 使用增加，但这并不一定意味着回归。对于那些 CPU 利用率增加的查询，83% 的查询则降低了内存使用。</p>
+<h4 id="5-2-基于历史的优化器"><a href="#5-2-基于历史的优化器" class="headerlink" title="5.2 基于历史的优化器"></a>5.2 基于历史的优化器</h4><p>在大多数情况下，表统计信息可以提供足够的信息以进行计划成本估算。然而，估算可能会出现偏差。此外，过滤器或连接选择性在事先是未知的，因此随着查询中嵌入更多过滤器，估算可能会变得愈加不精确。因此，Presto 还支持基于历史的优化器。由于 Presto 在 Meta 中被广泛用于 ETL 工作，因此查询高度重复且可预测。基于历史的优化器的理念是利用之前完成的重复查询的精确执行统计数据来指导未来重复查询的规划。除了在第 5.1 节中提到的两种连接策略外，基于历史的优化器还对计划具有更细粒度的控制，<strong>包括 (1) 调整移动复用大小和 (2) 部分或中间聚合消除</strong>。</p>
+<p>当生成查询计划时，应用与第 3.1 节中提到的相同标准化方法（注意，第 3.1 节中的谓词修剪是针对工人的文件级别的。对于优化器，仅可用表级统计信息）。然后，计划的常量被替换为符号。这个“符号计划”将作为外部统计存储的键，而其值则是查询完成后的实际执行统计。当一个结构相同但常量不同的查询被调度时，成本估算将直接从外部统计存储中根据相同的符号计划获得。由于 ETL 查询仅在日常变化“日期”常量，因此先前生成的符号计划提供的统计数据可以对最新的 ETL 处理是精确的。</p>
+<p>图 9 (b) 展示了与图 9 (a) 中类似的生产集群的 ETL 查询 CPU 减少情况。我们比较了启用基于历史优化的查询与仅启用基于成本优化的查询。查询是任意的，超出了连接查询，因为基于历史的优化为通用查询提供了改进。25% 的查询计划发生了变化，整体 CPU 提升了 10%。</p>
+<h4 id="5-3-自适应执行"><a href="#5-3-自适应执行" class="headerlink" title="5.3 自适应执行"></a>5.3 自适应执行</h4><p>统计数据对规划者做出决策非常重要。Presto 的优化器努力使用如前面各节所讨论的数据统计静态选择最佳计划。然而，不完整的统计信息、对数据的假设（均匀性假设、缺乏有关数据相关性和倾斜的信息）以及复杂查询（例如，复杂函数或多路连接）导致了次优计划。因此，需要自适应执行，在运行时动态调整查询计划，如果运行时的计划不是最优。</p>
+<p>自适应执行利用已完成的任务向<code>Coordinator</code>报告统计信息，以便<code>Coordinator</code>可以使用这些信息对下游任务重新优化计划。优化的类型是基于历史优化器在第 5.2 节中支持的类型的超集；自适应执行还提供连接和聚合的倾斜处理。这主要是因为在运行时检测倾斜的键不需要任何外部知识，因为许多元数据存储并不支持提供表或列的倾斜值。</p>
+<p>为了利用运行时统计信息，调度程序以分阶段的方式调度任务，从扫描任务一直到根节点。一旦上游任务完成，优化器将基于新收集的统计数据重新运行，并根据新计划调度下游任务。由于原始的 Presto 架构以流式方式洗牌数据，自适应执行仅在支持分阶段执行和非集成洗牌的 Presto on Spark 模式中可用。</p>
+<h3 id="6-启用更丰富的分析"><a href="#6-启用更丰富的分析" class="headerlink" title="6 启用更丰富的分析"></a>6 启用更丰富的分析</h3><p>除了分析工作负载的延迟、可扩展性和效率的提升外，Meta 越来越强调机器学习特征工程用例，增加对隐私要求的支持，以及图形分析。本节讨论了对各种此类用例的支持。</p>
+<h4 id="6-1-处理可变性"><a href="#6-1-处理可变性" class="headerlink" title="6.1 处理可变性"></a>6.1 处理可变性</h4><p>数据仓库历史上仅支持不可变数据。近年来，我们看到对支持可变数据及版本控制的需求增加。例如，Delta Lake、Iceberg 和 Hudi。Presto 与所有这些表格式集成。然而，对于 Meta 内部的用例，这些仍然不够。</p>
+<p>在 Meta 中，对于可变性有两个主要用例：（1）机器学习特征工程和（2）出于隐私目的的行级删除。对于（1），特征工程是使用领域知识提取有用信息的过程，以便机器学习算法使用。在 Meta，此过程可以通过 Presto 等分析引擎或使用声明性语言（例如 SQL）的流处理引擎，通过从原始数据生成特征来完成。机器学习工程师将持续探索数据以寻找合适的特征，以改进机器学习模型。在特征被选择用于模型之前，候选特征会被记录并与主表关联。根据训练结果，候选特征可能会合并到主表中或被丢弃。可能会同时开发数百个具有探索性的候选特征。主表架构的频繁更改并不理想。因此，需要一种更灵活的方式来变更列。对于（2），Meta 用户（包括 Facebook、Instagram 和 WhatsApp）可以选择不收集他们的个人数据用于内容推荐或其他用途。Meta 需要在响应用户的决策时删除用户数据。数据仓库表的规模在 EB 等级。在高频率下不断重写这些表并不可行。因此，针对这些不可变数据，需要一种可变的解决方案。</p>
+<p>为了解决上述问题，Delta 被内置于 Presto。Delta 是 Meta 内部的一个解决方案，允许表的变更，具有添加或移动列或行的灵活性。Delta 将一个或多个“增量文件”与单个主文件关联。增量文件作为主文件的变更日志，指示是否添加或删除了新列或行。</p>
+<p><strong>主要文件和增量文件的管理</strong></p>
+<p>主要文件和增量文件在逻辑行计数上对齐，以便从物理表示中恢复逻辑数据。当 Presto 读取主要文件时，它会启动额外的读取器来合并这些增量文件，以反映所做的更改。增量文件的关联和顺序存储在元数据存储中，并带有版本控制。增量文件使得数据仓库能够进行逻辑删除，以满足隐私要求。这些增量文件会定期合并到主要文件中，以避免读取时的开销。这个过程确保所有相应的物理位被删除。</p>
+<p><strong>删除开销的影响</strong></p>
+<p>在这种情况下，机器学习候选特征可以被建模为额外的增量列，而用户数据的删除可以被建模为增量行的删去。任何新候选特征的添加或某些用户移除个人数据都会导致与主要文件关联的新增量文件按照顺序创建。需要注意的是，由于个人数据删除活动发生频繁，因此需要对这些行的删除进行批处理，以避免创建过多的增量文件。</p>
+<p>对于列的添加或删除，增量文件的合并不会影响扫描性能，因为文件格式是列式的。然而，对于行的删除，表现会受到影响。图 10 显示了在生产环境中读取时合并增量文件对扫描 CPU 性能的影响。x 轴显示了删除行计数的百分比，y 轴表示与未删除行相比的 CPU 成本。当仅删除 1% 的行时，额外的 CPU 成本为 6%。然而，如果需要删除 60% 的行，成本会显著增加至 170%。</p>
+<h4 id="6-2-用户定义类型"><a href="#6-2-用户定义类型" class="headerlink" title="6.2 用户定义类型"></a>6.2 用户定义类型</h4><p>在 Presto 中允许使用用户定义类型来丰富语义。这些类型可以以继承的方式定义在层次结构中。例如，可以基于 Long 类型定义 ProfileId 类型，并将 UserId 和 PageId 类型作为其子类型。用户定义类型的定义存储在远程元数据存储中。除了存储类型定义本身外，还可以关联额外的信息，如用 SQL 表达的约束。这允许在运行时进行数据质量检查。例如，UserId 不能是负整数或超出一定长度。另一个示例是政策规范，与日益增长的隐私要求相关。近年来，对用户数据保护、匿名化和删除的要求越来越普遍。为了实现这一目标，首先需要在仓库中识别用户数据。用户定义类型允许业务领域专家对他们的数据进行建模，以反映表中的用户数据并关联相应的隐私政策。例如，表所有者可以定义一个电子邮件类型，要求在数据入库时立即匿名处理，并在 7 天后删除。数据仓库可以在后台应用这些政策，以符合隐私要求。</p>
+<h4 id="6-3-用户定义函数"><a href="#6-3-用户定义函数" class="headerlink" title="6.3 用户定义函数"></a>6.3 用户定义函数</h4><p>用户定义函数（UDF）允许将自定义逻辑嵌入到 SQL 中。Presto 支持多种方式的 UDF：</p>
+<ol>
+<li><strong>进程内 UDF</strong>：基本支持是进程内 UDF。函数以库的形式编写和发布。Presto 在运行时加载该库，并在与主评估引擎相同的进程中执行它们。这种模式效率较高，因为没有上下文切换。然而，仅 Presto on Spark 支持这种模式，因为函数库包含任意代码，在多租户模式下运行不安全。</li>
+<li><strong>UDF 服务</strong>：为了在多租户模式或不同编程语言中支持 UDF，Presto 构建了 UDF 服务器。UDF 在远程服务器中被调用，Presto 集群通过 RPC 与其通信。UDF 服务器频繁更新函数（从 minutes 到 hours），因此函数发布的节奏可以比 Presto 引擎更快。由于一个表达式可以包含本地可执行函数和远程 UDF，因此在编译时，表达式会被分解为本地可执行和远程可执行，计划中会有不同的投影阶段。地方可执行的表达式被编译成字节码以快速执行，而远程的则在 UDF 服务器上执行。</li>
+<li><strong>SQL 函数</strong>：虽然 UDF 提供了灵活性，但出于审计和隐私目的，查询应能在没有黑箱执行的情况下进行“推理”。为了平衡表达能力和可推理性，引入了 SQL 函数。当函数逻辑可以用 SQL 表达时，我们允许用户定义 SQL 函数，以简化查询逻辑，避免编写长且难以阅读的 SQL 语句。SQL 函数是一段 SQL 代码，其输入和输出类型定义明确。SQL 函数定义也存储在远程元数据存储中。SQL 函数将在执行时自动编译并可选地内联。</li>
+</ol>
+<h4 id="6-4-图扩展功能"><a href="#6-4-图扩展功能" class="headerlink" title="6.4 图扩展功能"></a>6.4 图扩展功能</h4><p>图数据集在 Meta 的多个用例中自然出现，从社交网络到表示数据流动的血缘图。虽然用户已利用图查询专用系统，如图形数据库和图分析引擎，但我们可以利用 Presto 来处理许多此类工作负载，从而允许我们将这些专用引擎整合在 Presto 之上。这种整合带来了多重好处，例如为用户提供一个共同的前端，并允许我们在共享基础设施上运行图工作负载。</p>
+<p>在 Presto 上支持图工作负载面临两大挑战。首先，使用普通 SQL 表达图查询意味着通过连接执行图遍历，这种方式直观性差、易出错，并且因复杂性问题常常不切实际。其次，图遍历查询是迭代和有状态的（例如，下一个要访问的顶点取决于已访问的顶点），通常导致包含许多大型连接的查询，这挑战了 Presto 的执行优化和扩展到大型图的能力。</p>
+<p>为了应对这些挑战，我们通过扩展 Presto SQL 引入了图查询语言构造，受到现有图查询语言 [21, 26, 31, 51] 的启发。这些语言构造为更多的人打开了图查询的大门，因为它们提供了一个对 SQL 用户来说熟悉的声明性界面，而不必让用户学习特定于图的编程框架。此外，我们构建了一个图查询规划器，该规划器结合了图特定的优化，以高效地在 Presto 运行时执行迭代查询。</p>
+<p>列表 1：带有图扩展的示例查询</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">SELECT vertices(path) FROM GRAPH g</span><br><span class="line">MATCH (src:Vertex)-/path:Edge&#123;1,5&#125;/ -&gt; (dst:Vertex)</span><br><span class="line">WHERE g.date = &#x27;2022-09-22&#x27; AND src.id IN (1,2,3)</span><br><span class="line">AND all_match(edges(path), e -&gt; e.property = TRUE)</span><br></pre></td></tr></table></figure>
+
+<p>上述示例查询涵盖了我们纳入语言中的几个特性。首先，FROM GRAPH 子句不引用表，而是引用一个“图”。这是我们在 Meta 的数据仓库中引入的一种新的元数据工件，它包含了图的模式（顶点或边类型，以及它们属性的名称和类型）与存储图的底层表之间的映射。我们省略了用户如何指定和存储图工件的细节，因为这超出了本文的范围。</p>
+<p>在大多数情况下，对图工件的查询旨在计算图中的一组路径。我们使用 MATCH 语法指定一个视觉模式，这为我们想要查询的路径提供了一个模板。像“(src:Vertex)”这样的括号用于指定顶点，而带标签的“-&gt;”箭头则用于指定边及其方向。上述示例计算从顶点 src 到顶点 dst 的路径，路径的长度至少为 1，最多为 5。图查询的输出是一个表，每一行是一个路径。WHERE 子句继承了标准 SQL 谓词语义，用于过滤计算出来的路径。我们使用图特定的函数，以及现有 Presto 函数，通过表达式如“all_match(edges(path), e -&gt; e.property &#x3D; TRUE)”引用路径数组上的复杂谓词。在同一示例中，SELECT 子句中的 vertices(path) 返回一个包含路径中所有顶点对象的数组，按照它们被发现的顺序排列。</p>
+<p>这些语言扩展所提供的高层次表达能力为图特定的优化提供了机会。在底层，图查询被解析为一个特殊的图逻辑计划，然后根据图查询的语义进行优化。最终，优化后的图逻辑计划被转换为关系计划，以与任何 Presto 查询一样执行。以下是我们一些优化的描述。</p>
+<p><strong>多步执行</strong>：像列表 1 这样的查询的简单实现会转换为关系查询，加入的次数与路径的最大长度相同。这种查询可能会达到 Presto 的内存限制，尤其是在需要计算的路径过多时。为了解决这个问题，我们实现了一种优化，将图查询计划转换为一系列较小的 Presto 查询计划。每个较小的查询计划计算长度不超过某个值的路径，并将其存储到一个临时中间表中，以便继续扩展这些路径。这使得每个迭代都在内存限制内。</p>
+<p><strong>高效路径扩展</strong>：再次以列表 1 为例，一个简单的计划会计算长度为 1、2 等的路径，并对它们进行 UNION ALL 操作。这会导致冗余计算。计算长度为 N 的路径与计算长度为 N-1 的路径所需的工作量是相同的，加上将其扩展至长度为 N 的路径所需的工作量。然而，Presto 优化器在这种情况下进行一般性的冗余工作消除并不直观。相反，在我们生成的查询计划中，一旦计算出长度为 N-1 的路径，我们将每条路径生成两个副本。然后，我们扩展其中一个副本到长度为 N 的路径，同时保留另一个副本，从而有效地重用计算。</p>
+<p><strong>高效子图计算</strong>：给定一组顶点 V，我们将子图定义为仅包含可从 V 中的任一顶点到达的边的图的子集。计算路径与子图的需求不同。例如，在计算子图时，无需通过连接边表跟踪和扩展路径。我们只需跟踪已访问的边。这使得子图计算计划能够一次扫描存储中的边表，然后通过标记可扩展的边为已访问来操作，从而最小化 IO。</p>
+<p><strong>复杂过滤器下推</strong>：用户可以通过诸如 all_match 的函数在路径上指定过滤器，这允许为输入路径的所有元素指定任意谓词。例如，列表 1 仅查询所有边的 property&#x3D;TRUE 的路径。对于当前的通用 Presto 优化器来说，这一谓词很难向下推送。相反，图语义信息允许我们在每次连接后直接将这些过滤器下推，从而最小化计算出的中间路径的数量。</p>
+<h3 id="未来工作"><a href="#未来工作" class="headerlink" title="未来工作"></a>未来工作</h3><p>本文提到的技术是我们处理更复杂工作负载的初步探索。第4.2节中的可恢复分组执行是我们早期探索的一个例子，后来被更通用的解决方案（第4.3节中的 Presto on Spark）所取代。以下是一些剩余挑战的列表及我们最近尝试的工程解决方案。</p>
+<ul>
+<li><strong>非SQL API：</strong> 第6.4节中的 GraphSQL 是一个仅适用于图相关用例的 SQL 扩展。我们正在探索一个类似于 Snowpark [4] 或 PySpark [23] 的通用非SQL API，以允许在<code>Coordinator</code>上执行控制流，并在工作节点上以 SQL 等效语义执行数据流。新的非SQL API 旨在提供一种类似过程的编程体验，具有更丰富的语义，能够涵盖图处理。</li>
+<li><strong>分布式缓存：</strong> 第3.1节中的缓存策略依赖于机器拥有本地闪存。这在 Meta 中是一个强假设，因为计算机器通常没有磁盘。我们正在探索将远程闪存缓存策略直接嵌入到 Meta 的分布式文件系统中。在这样的设计中，缓存责任可以隐藏于 Presto 之下。它还为其他使用分布式缓存服务提供了机会，超出了数据仓库的范围。</li>
+<li><strong>统一容器调度：</strong> Presto on Spark 依赖调度器为隔离分配容器。当前的调度器是类似于开源产品 Yarn [52] 的自建调度器。此外，Meta 的流处理引擎也依赖于其自建调度器 [32]。这两个调度器在功能上与 Meta 的容器解决方案 Tupperware [46] 有重叠，Tupperware 类似于 Kubernetes [11]。我们目前正在原型开发一个与 Tupperware 协作的轻量级模型，以支持快速且频繁的容器分配。新的架构旨在整合 Presto on Spark、流处理引擎和其他通用集群管理的调度策略。</li>
+<li><strong>统一用户定义函数（UDF）：</strong> 第6.3节中的 UDF 仅支持 Presto，无法被机器学习服务（如训练或推理）使用。这导致用户不得不为相同的目的编写多个版本的 UDF，并部署到不同服务。机器学习服务与 Presto 正在迁移到第3.2节中提到的 Velox 执行库中。我们正在扩展 UDF 提供，以便只需编写一次函数。这将进一步 整合 Meta 的各种 UDF 编写平台。</li>
+<li><strong>更多隐私挑战：</strong> 除了第6.1节中讨论的数据变更，我们还面临更多与隐私相关的挑战。其中一个主要挑战是查询重写，它允许用户从仓库中获取数据洞察而不暴露敏感数据。例如，允许展示 Facebook 用户年龄的近似分布；但不允许展示确切的分布或个别用户的年龄。这通常被称为差分隐私 [24]。不幸的是，为实现差分隐私而提到的各种查询重写技术，如 [53]，可能会导致生成复杂的 SQL，从而导致更高的 CPU 或内存使用。Meta 内部已经进行了几项探索，但尚未成功推出。另一个主要挑战是数据血缘。为了理解敏感数据的使用，需要一个完善的血缘图，以跟踪敏感数据是如何流入仓库的以及如何使用的。然而，自定义 UDF、复杂的 SQL 逻辑或下载数据至仓库外都使得跟踪变得难以实现。目前，我们依赖用户告知血缘服务数据的使用和流动，这容易出错。</li>
+</ul>
+<h3 id="结论"><a href="#结论" class="headerlink" title="结论"></a>结论</h3><p>Presto 在处理快速增长的数据量方面不断演进，以便更好地支持交互式工作负载的低延迟以及 ETL 工作负载的可扩展性。为了改善这两方面，进行了各种演进。支持低延迟和长期运行查询的设计原则考虑了未来的数据增长，而非简单的增量改进。我们讨论的各种技术，包括缓存策略、向量化执行或在类似 MapReduce 框架上的编译执行库，都是行业中已知的方法。然而，据我们所知，这是公司首次能够通过实施这些技术并以经受考验的质量在 Meta 规模上开源给社区使用，从而展现具体影响。通过这些努力，我们已成功通过将传统的 ETL 工作负载（之前由 SparkSQL 处理）、临时分析（之前由 Presto 处理）、交互式服务（之前由 Raptor 或 Cubrick 处理）及图处理（之前由 Giraph 处理）整合到 Presto 中来简化我们的数据仓库。这消除了多个查询引擎的需求，并简化了我们的数据仓库设计。</p>
+
+      </div>
+      
+      
+      
+    </div>
+    
+
+    
+    
+    
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#1-%E5%BC%95%E8%A8%80"><span class="nav-number">1.</span> <span class="nav-text">1 引言</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#2-%E6%9E%B6%E6%9E%84%E4%B8%8E%E6%8C%91%E6%88%98"><span class="nav-number">2.</span> <span class="nav-text">2 架构与挑战</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#3-%E5%BB%B6%E8%BF%9F%E6%94%B9%E8%BF%9B"><span class="nav-number">3.</span> <span class="nav-text">3 延迟改进</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#3-1-%E7%BC%93%E5%AD%98"><span class="nav-number">3.1.</span> <span class="nav-text">3.1 缓存</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#3-2-%E6%9C%AC%E5%9C%B0%E5%90%91%E9%87%8F%E5%8C%96%E6%89%A7%E8%A1%8C"><span class="nav-number">3.2.</span> <span class="nav-text">3.2 本地向量化执行</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#3-3-%E8%87%AA%E9%80%82%E5%BA%94%E8%BF%87%E6%BB%A4"><span class="nav-number">3.3.</span> <span class="nav-text">3.3 自适应过滤</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#3-4-%E7%89%A9%E5%8C%96%E8%A7%86%E5%9B%BE%E4%B8%8E%E8%BF%91%E5%AE%9E%E6%97%B6%E6%95%B0%E6%8D%AE"><span class="nav-number">3.4.</span> <span class="nav-text">3.4 物化视图与近实时数据</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#4-%E5%8F%AF%E6%89%A9%E5%B1%95%E6%80%A7%E6%94%B9%E8%BF%9B"><span class="nav-number">3.5.</span> <span class="nav-text">4. 可扩展性改进</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#4-1-%E5%A4%9ACoordinator"><span class="nav-number">3.5.1.</span> <span class="nav-text">4.1 多Coordinator</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#4-2-%E5%8F%AF%E6%81%A2%E5%A4%8D%E5%88%86%E7%BB%84%E6%89%A7%E8%A1%8C"><span class="nav-number">3.5.2.</span> <span class="nav-text">4.2 可恢复分组执行</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#4-3-Presto-on-Spark"><span class="nav-number">3.5.3.</span> <span class="nav-text">4.3  Presto on Spark</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#4-4-Spill"><span class="nav-number">3.5.4.</span> <span class="nav-text">4.4 Spill</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#5-%E6%95%88%E7%8E%87%E6%8F%90%E5%8D%87"><span class="nav-number">3.6.</span> <span class="nav-text">5. 效率提升</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#5-1-CBO"><span class="nav-number">3.6.1.</span> <span class="nav-text">5.1 CBO</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#5-2-%E5%9F%BA%E4%BA%8E%E5%8E%86%E5%8F%B2%E7%9A%84%E4%BC%98%E5%8C%96%E5%99%A8"><span class="nav-number">3.6.2.</span> <span class="nav-text">5.2 基于历史的优化器</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#5-3-%E8%87%AA%E9%80%82%E5%BA%94%E6%89%A7%E8%A1%8C"><span class="nav-number">3.6.3.</span> <span class="nav-text">5.3 自适应执行</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#6-%E5%90%AF%E7%94%A8%E6%9B%B4%E4%B8%B0%E5%AF%8C%E7%9A%84%E5%88%86%E6%9E%90"><span class="nav-number">3.7.</span> <span class="nav-text">6 启用更丰富的分析</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#6-1-%E5%A4%84%E7%90%86%E5%8F%AF%E5%8F%98%E6%80%A7"><span class="nav-number">3.7.1.</span> <span class="nav-text">6.1 处理可变性</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#6-2-%E7%94%A8%E6%88%B7%E5%AE%9A%E4%B9%89%E7%B1%BB%E5%9E%8B"><span class="nav-number">3.7.2.</span> <span class="nav-text">6.2 用户定义类型</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#6-3-%E7%94%A8%E6%88%B7%E5%AE%9A%E4%B9%89%E5%87%BD%E6%95%B0"><span class="nav-number">3.7.3.</span> <span class="nav-text">6.3 用户定义函数</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#6-4-%E5%9B%BE%E6%89%A9%E5%B1%95%E5%8A%9F%E8%83%BD"><span class="nav-number">3.7.4.</span> <span class="nav-text">6.4 图扩展功能</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%9C%AA%E6%9D%A5%E5%B7%A5%E4%BD%9C"><span class="nav-number">3.8.</span> <span class="nav-text">未来工作</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E7%BB%93%E8%AE%BA"><span class="nav-number">3.9.</span> <span class="nav-text">结论</span></a></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">Yifei Wu</p>
+  <div class="site-description" itemprop="description">开发心路历程笔记本</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">1</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://x.com/FeigeeWu" title="Twitter → https:&#x2F;&#x2F;x.com&#x2F;FeigeeWu" rel="noopener" target="_blank"><i class="fab fa-twitter fa-fw"></i>Twitter</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="https://www.zhihu.com/people/eager-wu" title="Zhihu → https:&#x2F;&#x2F;www.zhihu.com&#x2F;people&#x2F;eager-wu" rel="noopener" target="_blank"><i class="fa-hand-o-right fa-fw"></i>Zhihu</a>
+      </span>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2024</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">Yifei Wu</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>

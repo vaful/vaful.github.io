@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"always","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":false,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
+  </script>
+
+  <meta name="description" content="OLAP 并发执行架构与调度之 Spark SQL 和 Presto 在大数据处理和分析中，Apache Spark 和 Presto 是在数仓行业中标杆产品，都经常被用于各家数仓架构中用于离线实时建设。这几年云原生大数据数据库产品大爆发，但是从技术架构上说基本上都是这两种大的范式。 在这篇文章中，我们首先会用一个简单的SQL说明数据库 Volcano算法，然后再阐述 Spark SQL 与Pre">
+<meta property="og:type" content="website">
+<meta property="og:title" content="飞哥编程笔记">
+<meta property="og:url" content="http://example.com/posts/Spark%20SQL%20%E5%92%8C%20Presto%20%E6%89%A7%E8%A1%8C%E5%BC%95%E6%93%8E%E6%9E%B6%E6%9E%84.html">
+<meta property="og:site_name" content="飞哥编程笔记">
+<meta property="og:description" content="OLAP 并发执行架构与调度之 Spark SQL 和 Presto 在大数据处理和分析中，Apache Spark 和 Presto 是在数仓行业中标杆产品，都经常被用于各家数仓架构中用于离线实时建设。这几年云原生大数据数据库产品大爆发，但是从技术架构上说基本上都是这两种大的范式。 在这篇文章中，我们首先会用一个简单的SQL说明数据库 Volcano算法，然后再阐述 Spark SQL 与Pre">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="http://example.com/Users/yifei/Downloads/spark_jiagou.png">
+<meta property="og:image" content="http://example.com/Users/yifei/Downloads/v2-8cb0e4a445c35dd90d3d7ecf2cf498a8_1440w.webp">
+<meta property="article:published_time" content="2024-10-11T06:49:45.046Z">
+<meta property="article:modified_time" content="2024-10-11T06:49:45.045Z">
+<meta property="article:author" content="Yifei Wu">
+<meta property="article:tag" content="数据库 分布式 OLAP">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="http://example.com/Users/yifei/Downloads/spark_jiagou.png">
+
+<link rel="canonical" href="http://example.com/posts/Spark%20SQL%20%E5%92%8C%20Presto%20%E6%89%A7%E8%A1%8C%E5%BC%95%E6%93%8E%E6%9E%B6%E6%9E%84">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : false,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title> | 飞哥编程笔记
+</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">飞哥编程笔记</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">阿飞学习备忘录</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+  </ul>
+</nav>
+
+
+
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+  
+  
+
+          <div class="content page posts-expand">
+            
+
+    
+    
+    
+    <div class="post-block" lang="zh-CN">
+      <header class="post-header">
+
+<h1 class="post-title" itemprop="name headline">
+</h1>
+
+<div class="post-meta">
+  
+
+</div>
+
+</header>
+
+      
+      
+      
+      <div class="post-body">
+          <h2 id="OLAP-并发执行架构与调度之-Spark-SQL-和-Presto"><a href="#OLAP-并发执行架构与调度之-Spark-SQL-和-Presto" class="headerlink" title="OLAP 并发执行架构与调度之 Spark SQL 和 Presto"></a>OLAP 并发执行架构与调度之 Spark SQL 和 Presto</h2><p> 在大数据处理和分析中，<code>Apache Spark</code> 和 <code>Presto</code> 是在数仓行业中标杆产品，都经常被用于各家数仓架构中用于离线实时建设。这几年云原生大数据数据库产品大爆发，但是从技术架构上说基本上都是这两种大的范式。</p>
+<p>在这篇文章中，我们首先会用一个简单的SQL说明数据库 <code>Volcano</code>算法，然后再阐述 <code>Spark SQL</code> 与<code>Presto</code> 分布式执行架构和并发环境下是如何做任务调度的。希望通过这个案例分析能让大家对 <strong>StageByStage</strong> 和 <strong>MPP</strong> 执行引擎的区别有所认知，也更希望本文能够帮助大家在数仓选型和业务调优上有一些帮助。</p>
+<h2 id="基本算法"><a href="#基本算法" class="headerlink" title="基本算法"></a>基本算法</h2><p>首先让我们考虑一个简单的数据库查询，我们将使用伪代码来描述每种方法的处理方式。</p>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">SELECT</span> <span class="operator">*</span></span><br><span class="line"><span class="keyword">FROM</span> Orders</span><br><span class="line"><span class="keyword">JOIN</span> Customers <span class="keyword">ON</span> Orders.CustomerID <span class="operator">=</span> Customers.ID</span><br><span class="line"><span class="keyword">WHERE</span> Customers.Country <span class="operator">=</span> <span class="string">&#x27;Germany&#x27;</span>;</span><br></pre></td></tr></table></figure>
+
+<p>![image-20240221140226842](&#x2F;Users&#x2F;yifei&#x2F;Library&#x2F;Application Support&#x2F;typora-user-images&#x2F;image-20240221140226842.png)</p>
+<h3 id="方案-1"><a href="#方案-1" class="headerlink" title="方案 1"></a>方案 1</h3><p>一种简单的方法，我们一次性处理每个操作，并将中间结果存储在某个地方以供下一步使用，这里假设Customers和Orders就是个在内存中的一个集合（在具体业界中，这里涉及的东西非常负载，需要决策怎么去做IO，扫描文件还是索引，怎么处理不同文件，怎么做并发并行）</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 假设我们有两个函数: join_tables 和 filter_rows</span></span><br><span class="line"></span><br><span class="line"><span class="comment"># 首先，我们执行连接操作，并存储结果</span></span><br><span class="line">joined_result = join_tables(Orders, Customers, on=<span class="string">&#x27;CustomerID=ID&#x27;</span>)</span><br><span class="line"></span><br><span class="line"><span class="comment"># 接下来，我们对连接后的结果应用过滤条件，并再次存储结果</span></span><br><span class="line">final_result = filter_rows(joined_result, where=<span class="string">&quot;Country=&#x27;Germany&#x27;&quot;</span>)</span><br><span class="line"></span><br><span class="line"><span class="comment"># 最后，我们遍历最终结果并返回</span></span><br><span class="line"><span class="keyword">for</span> row <span class="keyword">in</span> final_result:</span><br><span class="line">    <span class="built_in">print</span>(row)</span><br></pre></td></tr></table></figure>
+
+<p>在这种方式中，<code>join_tables</code> 和 <code>filter_rows</code> 函数分别处理它们的任务并产生中间结果。这些结果可能很大，需要被完整地存储在内存或临时存储中，直到下一步操作完成, 资源消耗就很高。这种实现的好处是控制逻辑很简单，也很容易确定哪个阶段失败了，恢复逻辑简单。</p>
+<h3 id="方案-2-（Volcano-算法）"><a href="#方案-2-（Volcano-算法）" class="headerlink" title="方案 2 （Volcano 算法）"></a>方案 2 （Volcano 算法）</h3><p>我们可以使用迭代器模式来处理这个查询操作，我们先给每个运算定义好三个接口，<code>open()</code>,<code> next()</code>和<code>close()</code>  如下：</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">class</span> <span class="title class_">JoinOperator</span>:</span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">__init__</span>(<span class="params">self, left_input, right_input, condition</span>):</span><br><span class="line">        <span class="variable language_">self</span>.left_input = left_input</span><br><span class="line">        <span class="variable language_">self</span>.right_input = right_input</span><br><span class="line">        <span class="variable language_">self</span>.condition = condition</span><br><span class="line">        <span class="variable language_">self</span>.current_left_row = <span class="literal">None</span></span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">open</span>(<span class="params">self</span>):</span><br><span class="line">        <span class="variable language_">self</span>.left_input.<span class="built_in">open</span>()</span><br><span class="line">        <span class="variable language_">self</span>.right_input.<span class="built_in">open</span>()</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">next</span>(<span class="params">self</span>):</span><br><span class="line">        <span class="keyword">while</span> <span class="literal">True</span>:</span><br><span class="line">            <span class="keyword">if</span> <span class="variable language_">self</span>.current_left_row <span class="keyword">is</span> <span class="literal">None</span>:</span><br><span class="line">                <span class="variable language_">self</span>.current_left_row = <span class="variable language_">self</span>.left_input.<span class="built_in">next</span>()</span><br><span class="line">                <span class="keyword">if</span> <span class="variable language_">self</span>.current_left_row <span class="keyword">is</span> <span class="literal">None</span>:</span><br><span class="line">                    <span class="keyword">return</span> <span class="literal">None</span></span><br><span class="line">                <span class="variable language_">self</span>.right_input.rewind()</span><br><span class="line"></span><br><span class="line">            right_row = <span class="variable language_">self</span>.right_input.<span class="built_in">next</span>()</span><br><span class="line">            <span class="keyword">if</span> right_row <span class="keyword">is</span> <span class="keyword">not</span> <span class="literal">None</span> <span class="keyword">and</span> <span class="variable language_">self</span>.condition(<span class="variable language_">self</span>.current_left_row, right_row):</span><br><span class="line">                <span class="keyword">return</span> <span class="variable language_">self</span>.current_left_row, right_row</span><br><span class="line">            <span class="keyword">elif</span> right_row <span class="keyword">is</span> <span class="literal">None</span>:</span><br><span class="line">                <span class="variable language_">self</span>.current_left_row = <span class="literal">None</span></span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">close</span>(<span class="params">self</span>):</span><br><span class="line">        <span class="variable language_">self</span>.left_input.close()</span><br><span class="line">        <span class="variable language_">self</span>.right_input.close()</span><br><span class="line"></span><br><span class="line"><span class="keyword">class</span> <span class="title class_">FilterOperator</span>:</span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">__init__</span>(<span class="params">self, input_operator, condition</span>):</span><br><span class="line">        <span class="variable language_">self</span>.input_operator = input_operator</span><br><span class="line">        <span class="variable language_">self</span>.condition = condition</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">open</span>(<span class="params">self</span>):</span><br><span class="line">        <span class="variable language_">self</span>.input_operator.<span class="built_in">open</span>()</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">next</span>(<span class="params">self</span>):</span><br><span class="line">        <span class="keyword">while</span> <span class="literal">True</span>:</span><br><span class="line">            row = <span class="variable language_">self</span>.input_operator.<span class="built_in">next</span>()</span><br><span class="line">            <span class="keyword">if</span> row <span class="keyword">is</span> <span class="literal">None</span> <span class="keyword">or</span> <span class="variable language_">self</span>.condition(row):</span><br><span class="line">                <span class="keyword">return</span> row</span><br><span class="line"></span><br><span class="line">    <span class="keyword">def</span> <span class="title function_">close</span>(<span class="params">self</span>):</span><br><span class="line">        <span class="variable language_">self</span>.input_operator.close()</span><br></pre></td></tr></table></figure>
+<p>真正执行的时候，迭代器模式就是先创建好迭代器其实就是定义好这个依赖关系。然后从Root节点开始调用 <code>next()</code> 方法时，<code>JoinOperator</code> 和 <code>FilterOperator</code> 都仅处理并返回一行（部分）结果，而不是整个中间结果集。</p>
+<figure class="highlight python"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment"># 创建迭代器</span></span><br><span class="line">join_op = JoinOperator(OrdersIterator(), CustomersIterator(), condition=<span class="keyword">lambda</span> o, c: o.CustomerID == c.ID)</span><br><span class="line">filter_op = FilterOperator(join_op, condition=<span class="keyword">lambda</span> row: row.Customers.Country == <span class="string">&#x27;Germany&#x27;</span>)</span><br><span class="line">filter_op.<span class="built_in">open</span>()</span><br><span class="line"></span><br><span class="line"><span class="comment"># 执行查询</span></span><br><span class="line"><span class="keyword">while</span> <span class="literal">True</span>:</span><br><span class="line">    result_row = filter_op.<span class="built_in">next</span>()</span><br><span class="line">    <span class="keyword">if</span> result_row <span class="keyword">is</span> <span class="literal">None</span>:</span><br><span class="line">        <span class="keyword">break</span></span><br><span class="line">    <span class="built_in">print</span>(result_row)</span><br><span class="line">    </span><br><span class="line">filter_op.close()</span><br></pre></td></tr></table></figure>
+
+<p>这种方式其实就是20世纪90年代早期由Goetz Graefe 提出用于数据库查询执行的Volcano 模型。Volcano 模型避免了需要大量内存来存储中间结果，并且可以在数据流经操作符时即时进行处理。这种按需处理的方式使得 Volcano 模型在处理大型数据集时更高效，尤其是在数据无法完全放入内存的情况下，但是会有大量的虚函数调用开销以及某些场景下 cpu cache 命中率不够高。	</p>
+<h3 id="Spark"><a href="#Spark" class="headerlink" title="Spark"></a>Spark</h3><h4 id="架构"><a href="#架构" class="headerlink" title="架构"></a>架构</h4><p><img src="/Users/yifei/Downloads/spark_jiagou.png" alt="spark_jiagou"></p>
+<p>上述SQL优化之后会变成下述的Plan，会把过滤条件 <code>JOIN</code> 操作之前 (图1(a))。然后，<code>Spark</code>的<code>DAG</code>执行引擎将这个优化的计算计划转换成一个或多个作业， 每个作业由一个DAG的<code>Stage</code>组成，图1(b)表示产生当前作业最终结果的数据变换的血缘关系。每个Stage之间的中间数据通过 <code>shuffle</code>操作传输。</p>
+<p>![image-20240221145627942](&#x2F;Users&#x2F;yifei&#x2F;Library&#x2F;Application Support&#x2F;typora-user-images&#x2F;image-20240221145627942.png)</p>
+<h4 id="Shuffle-算法"><a href="#Shuffle-算法" class="headerlink" title="Shuffle 算法"></a>Shuffle 算法</h4><p><code>Shuffle </code>操作是 <code>MapReduce</code> 计算范式的关键所在，它将涉及的中间数据 <code>map</code> 和<code>reduce</code>任务之间之间进行传输。尽管 <code>shuffle</code> 操作的基础概念很直接，但是不同框架采取了不同的方法来实现它。</p>
+<p>在Spark中，根据部署模式的不同，执行shuffle的方式也略有不同。在YARN上部署Spark，并利用外部shuffle服务来管理shuffle数据的部署模式下，Spark中的shuffle操作工作如图2所示：</p>
+<p>![image-20240221145506307](&#x2F;Users&#x2F;yifei&#x2F;Library&#x2F;Application Support&#x2F;typora-user-images&#x2F;image-20240221145506307.png)</p>
+<ol>
+<li>每个Spark执行器启动时都会向位于同一节点上的Spark外部shuffle服务（ESS）注册。这样的注册让Spark ESS知道每个已注册执行器的本地map任务产生的实体化shuffle数据的位置。注意，Spark ESS实例是独立于Spark执行器的，并且可能在许多Spark应用程序之间共享。</li>
+<li>shuffle map 阶段中的每个任务处理它的数据部分。在map任务结束时，它产生一对文件，一个用于shuffle数据，另一个用于索引前者中的shuffle块。为了做到这一点，map任务根据分区键的哈希值对所有转换后的记录进行排序。在这个过程中，如果map任务不能在内存中对所有数据进行排序，它可能会将中间数据溢出到磁盘上。排序完成后，就会生成shuffle数据文件，在该文件中，属于同一shuffle分区的所有记录被组织到一个shuffle块中。同时也会生成相应的shuffle索引文件，该文件记录了块边界偏移量。</li>
+<li>当下一阶段的reduce任务开始运行时，它们将向Spark驱动程序查询它们输入shuffle块的位置。一旦这个信息可用，每个reduce任务将建立与相应的Spark ESS实例的连接，以便获取它们的输入数据。Spark ESS在收到这样的请求后，利用shuffle索引文件跳转到shuffle数据文件中相应的块数据，从磁盘上读取它，并将其发送回reduce任务。</li>
+</ol>
+<h4 id="DAG-Task-调度"><a href="#DAG-Task-调度" class="headerlink" title="DAG Task 调度"></a>DAG Task 调度</h4><p>​	经过Stage划分之后，会产生一个或者多个互相关联的Stage。其中，真正执行Action算子的RDD所在的Stage被称为<code>Final Stage</code>，<code>DAGScheduler</code>会从这个<code>Final Stage</code>生成作业实例。</p>
+<p>在提交<code>Stage</code>时，<code>DAGScheduler</code>会先判断该<code>Stage</code>的<code>父Stage</code>的执行结果是否可用。如果所有<code>父Stage</code>的执行结果都可用，则提交该<code>Stage</code>。如果有任意一个<code>父Stage</code>的结果不可用，则尝试递归提交该<code>父Stage</code>。</p>
+<p>所以，从上述两个角度来看，就可以发现 <code>Spark</code>这种引擎实现的时候是通过<code>Shuffle</code>把数据持久化，一个<code>Stage</code>一个<code>Stage</code>的调度执行，我猜这也是业界说这种方式是<code>StageByStage</code>的原因。</p>
+<h3 id="Presto-Trino"><a href="#Presto-Trino" class="headerlink" title="Presto &#x2F; Trino"></a>Presto &#x2F; Trino</h3><p>![image-20240221162432226](&#x2F;Users&#x2F;yifei&#x2F;Library&#x2F;Application Support&#x2F;typora-user-images&#x2F;image-20240221162432226.png)</p>
+<h3 id="Task-调度"><a href="#Task-调度" class="headerlink" title="Task 调度"></a>Task 调度</h3><p>​	还是上面的SQL 经过<code>Trino Parse/Optimize</code> 之后会变成下述的<code> Plan</code>，然后按照 <code>Stage</code> 将这个 <code>Plan</code> 转换成一个或多个 <code>Task</code>，每个<code>Stage</code>之间的中间数据通过 <code>shuffle</code>操作传输。</p>
+<p>![image-20240222155650506](&#x2F;Users&#x2F;yifei&#x2F;Library&#x2F;Application Support&#x2F;typora-user-images&#x2F;image-20240222155650506.png)</p>
+<p>这里和 Spark 不同的地方在于: </p>
+<p>​	i. shuffle 不落地，只是把数据放到内存中。比如Stage 1-2 中的buffer，按照下游并发的数量分桶，Task 中PartitionOutput 算子会把数据按照shuffle 的规则分到这几个buffer中，下游Stage 3 每个Woeker（并发）分来来拉取对应buffer中的数据。 </p>
+<p>​	ii. 在某个Query内，下游的Stage 也不需要等待前面的Stage的所有Task都计算完才开始拉数据，而是会定期轮询找上游依赖的Stage 来拉取部分buffer数据。不过下图中的Join（HashJoin的话）比较特殊，会先把一边的数据全部拉齐，建好HashTable，然后再开始pipeline拉取另一边的数据，往后pipeline起来。</p>
+<h4 id="本地数据流"><a href="#本地数据流" class="headerlink" title="本地数据流"></a>本地数据流</h4><p>如下图所示，在 Trino 执行模型中，除了节点的并发之外，还有节点内部的并行（实现过程中是线程上的并行）。一个Stage会生成多个Task调度到到各个 <code>Worker节点</code> 内执行，每个Task内还会分成多个pipeline（一般是一个），每个pipeline内部会并发生成多个Driver，每个Driver执行的内容都是一段一样的算子树。</p>
+<p><img src="/Users/yifei/Downloads/v2-8cb0e4a445c35dd90d3d7ecf2cf498a8_1440w.webp" alt="v2-8cb0e4a445c35dd90d3d7ecf2cf498a8_1440w"></p>
+<p>​	每个Driver处理的数据单元被抽象成<code>Split</code>，被指派给一个线程执行。Trino的<code>DriverLoop</code>比流行的Volcano模型（拉模式）的递归迭代器要复杂，首先它更加适合协作式多任务处理，因为在让出线程之前，可以快速将操作符带到一个已知的状态，而不是无限期地阻塞。此外，<code>Driver</code>可以在没有额外输入的情况下在操作符之间移动数据（例如，恢复资源密集型或爆炸性转换的计算）来最大限度地增加每一个时间段执行的工作。</p>
+<p>​	<code>DriverLoop</code>持续地在操作符之间移动<code>Page</code>，直到调度时间片完成，或直到操作符无法取得进展。详细的逻辑大家可以参考代码<code> io.trino.operator.Driver#processInternal()</code></p>
+<h4 id="Stage之间的调度"><a href="#Stage之间的调度" class="headerlink" title="Stage之间的调度"></a>Stage之间的调度</h4><p>   Trino旨在最大限度地减少端到端延迟，同时最大化资源利用率。Trino使用基于内存的<code>buffer</code>，通过HTTP来交换中间结果, 任务产生的数据存储在内存<code>buffer</code>中，供其他<code>Worker</code>消费。使用HTTP长轮询从其他工作节点请求中间结果，这种机制提供的延迟比持久化到磁盘的其他系统要低得多。</p>
+<p>从上面看的出来，Trino是以 pipeline 方式保证数据持续流动的。在某个Task内不需要前面的Operator计算完所有数据再输出结果给后面的Operator，在某个Query内也不需要前面的Stage的所有Task都计算完所有数据再输出结果给后面的Stage。</p>
+
+      </div>
+      
+      
+      
+    </div>
+    
+
+    
+    
+    
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#OLAP-%E5%B9%B6%E5%8F%91%E6%89%A7%E8%A1%8C%E6%9E%B6%E6%9E%84%E4%B8%8E%E8%B0%83%E5%BA%A6%E4%B9%8B-Spark-SQL-%E5%92%8C-Presto"><span class="nav-number">1.</span> <span class="nav-text">OLAP 并发执行架构与调度之 Spark SQL 和 Presto</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%9F%BA%E6%9C%AC%E7%AE%97%E6%B3%95"><span class="nav-number">2.</span> <span class="nav-text">基本算法</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%96%B9%E6%A1%88-1"><span class="nav-number">2.1.</span> <span class="nav-text">方案 1</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%96%B9%E6%A1%88-2-%EF%BC%88Volcano-%E7%AE%97%E6%B3%95%EF%BC%89"><span class="nav-number">2.2.</span> <span class="nav-text">方案 2 （Volcano 算法）</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Spark"><span class="nav-number">2.3.</span> <span class="nav-text">Spark</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%9E%B6%E6%9E%84"><span class="nav-number">2.3.1.</span> <span class="nav-text">架构</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#Shuffle-%E7%AE%97%E6%B3%95"><span class="nav-number">2.3.2.</span> <span class="nav-text">Shuffle 算法</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#DAG-Task-%E8%B0%83%E5%BA%A6"><span class="nav-number">2.3.3.</span> <span class="nav-text">DAG Task 调度</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Presto-Trino"><span class="nav-number">2.4.</span> <span class="nav-text">Presto &#x2F; Trino</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Task-%E8%B0%83%E5%BA%A6"><span class="nav-number">2.5.</span> <span class="nav-text">Task 调度</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%9C%AC%E5%9C%B0%E6%95%B0%E6%8D%AE%E6%B5%81"><span class="nav-number">2.5.1.</span> <span class="nav-text">本地数据流</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#Stage%E4%B9%8B%E9%97%B4%E7%9A%84%E8%B0%83%E5%BA%A6"><span class="nav-number">2.5.2.</span> <span class="nav-text">Stage之间的调度</span></a></li></ol></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">Yifei Wu</p>
+  <div class="site-description" itemprop="description">开发心路历程笔记本</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">1</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://x.com/FeigeeWu" title="Twitter → https:&#x2F;&#x2F;x.com&#x2F;FeigeeWu" rel="noopener" target="_blank"><i class="fab fa-twitter fa-fw"></i>Twitter</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="https://www.zhihu.com/people/eager-wu" title="Zhihu → https:&#x2F;&#x2F;www.zhihu.com&#x2F;people&#x2F;eager-wu" rel="noopener" target="_blank"><i class="fa-hand-o-right fa-fw"></i>Zhihu</a>
+      </span>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2024</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">Yifei Wu</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>

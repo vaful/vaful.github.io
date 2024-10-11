@@ -1,0 +1,592 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"always","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":false,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
+  </script>
+
+  <meta name="description" content="引言哈希表是数据结构中的天后级结构，其他的数据结构在优化过程中不会如此容易引入bug。在这篇博客文章中，我们将探讨哈希表在ClickHouse中的实现，然后通过代码解读展示现代C++中零成本抽象是如何工作的以及向大家说明一些从通用代码库中获得多种数据结构的小技巧。最后，我们还将展示如何在特定场景中确保最佳性能，以及如何在测试性能时避免犯错。 首先，让我们来探讨下为什么需要哈希表，在数据库中什么地方">
+<meta property="og:type" content="article">
+<meta property="og:title" content="【译】 ClickHouse 中 HashTable C++ 零成本抽象实现">
+<meta property="og:url" content="http://example.com/2024/03/11/%E3%80%90%E8%AF%91%E3%80%91%20ClickHouse%20%E4%B8%ADHashTable%20C++%20%E9%9B%B6%E6%8A%BD%E8%B1%A1%E5%AE%9E%E7%8E%B0%20%20/index.html">
+<meta property="og:site_name" content="飞哥编程笔记">
+<meta property="og:description" content="引言哈希表是数据结构中的天后级结构，其他的数据结构在优化过程中不会如此容易引入bug。在这篇博客文章中，我们将探讨哈希表在ClickHouse中的实现，然后通过代码解读展示现代C++中零成本抽象是如何工作的以及向大家说明一些从通用代码库中获得多种数据结构的小技巧。最后，我们还将展示如何在特定场景中确保最佳性能，以及如何在测试性能时避免犯错。 首先，让我们来探讨下为什么需要哈希表，在数据库中什么地方">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="https://clickhouse.com/uploads/hash_table_main_methods_2fa4b9550e.png">
+<meta property="og:image" content="https://clickhouse.com/uploads/Hash_table_simple_ba2d7c7caf.png">
+<meta property="og:image" content="https://clickhouse.com/uploads/Hash_table_simple_2_d1a5ea2784.png">
+<meta property="og:image" content="https://clickhouse.com/uploads/Hash_table_simple_chaining_3f8470994c.png">
+<meta property="og:image" content="https://clickhouse.com/uploads/Hash_table_simple_null_keys_bb6cd14678.png">
+<meta property="og:image" content="https://clickhouse.com/uploads/Hash_table_simple_open_address_7ad7589e6c.png">
+<meta property="og:image" content="https://clickhouse.com/uploads/Hash_table_simple_open_address_non_linear_87be12499f.png">
+<meta property="og:image" content="https://clickhouse.com/uploads/Hash_table_simple_null_check_168201b366.png">
+<meta property="og:image" content="https://clickhouse.com/uploads/Hash_table_simple_google_version_a13fb37875.png">
+<meta property="og:image" content="https://clickhouse.com/uploads/hash_table_benchmarks_69ac613223.png">
+<meta property="og:image" content="https://clickhouse.com/uploads/hash_table_latency_4319105d3e.png">
+<meta property="article:published_time" content="2024-03-11T13:45:20.000Z">
+<meta property="article:modified_time" content="2024-10-11T13:48:49.358Z">
+<meta property="article:author" content="Yifei Wu">
+<meta property="article:tag" content="数据库 分布式 OLAP">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="https://clickhouse.com/uploads/hash_table_main_methods_2fa4b9550e.png">
+
+<link rel="canonical" href="http://example.com/2024/03/11/%E3%80%90%E8%AF%91%E3%80%91%20ClickHouse%20%E4%B8%ADHashTable%20C++%20%E9%9B%B6%E6%8A%BD%E8%B1%A1%E5%AE%9E%E7%8E%B0%20%20/">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : true,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title>【译】 ClickHouse 中 HashTable C++ 零成本抽象实现 | 飞哥编程笔记</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">飞哥编程笔记</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">阿飞学习备忘录</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+  </ul>
+</nav>
+
+
+
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+
+          <div class="content post posts-expand">
+            
+
+    
+  
+  
+  <article itemscope itemtype="http://schema.org/Article" class="post-block" lang="zh-CN">
+    <link itemprop="mainEntityOfPage" href="http://example.com/2024/03/11/%E3%80%90%E8%AF%91%E3%80%91%20ClickHouse%20%E4%B8%ADHashTable%20C++%20%E9%9B%B6%E6%8A%BD%E8%B1%A1%E5%AE%9E%E7%8E%B0%20%20/">
+
+    <span hidden itemprop="author" itemscope itemtype="http://schema.org/Person">
+      <meta itemprop="image" content="/images/avatar.gif">
+      <meta itemprop="name" content="Yifei Wu">
+      <meta itemprop="description" content="开发心路历程笔记本">
+    </span>
+
+    <span hidden itemprop="publisher" itemscope itemtype="http://schema.org/Organization">
+      <meta itemprop="name" content="飞哥编程笔记">
+    </span>
+      <header class="post-header">
+        <h1 class="post-title" itemprop="name headline">
+          【译】 ClickHouse 中 HashTable C++ 零成本抽象实现
+        </h1>
+
+        <div class="post-meta">
+            <span class="post-meta-item">
+              <span class="post-meta-item-icon">
+                <i class="far fa-calendar"></i>
+              </span>
+              <span class="post-meta-item-text">发表于</span>
+
+              <time title="创建时间：2024-03-11 21:45:20" itemprop="dateCreated datePublished" datetime="2024-03-11T21:45:20+08:00">2024-03-11</time>
+            </span>
+              <span class="post-meta-item">
+                <span class="post-meta-item-icon">
+                  <i class="far fa-calendar-check"></i>
+                </span>
+                <span class="post-meta-item-text">更新于</span>
+                <time title="修改时间：2024-10-11 21:48:49" itemprop="dateModified" datetime="2024-10-11T21:48:49+08:00">2024-10-11</time>
+              </span>
+
+          
+
+        </div>
+      </header>
+
+    
+    
+    
+    <div class="post-body" itemprop="articleBody">
+
+      
+        <h2 id="引言"><a href="#引言" class="headerlink" title="引言"></a>引言</h2><p>哈希表是数据结构中的天后级结构，其他的数据结构在优化过程中不会如此容易引入bug。在这篇博客文章中，我们将探讨哈希表在ClickHouse中的实现，然后通过代码解读展示现代C++中零成本抽象是如何工作的以及向大家说明一些从通用代码库中获得多种数据结构的小技巧。最后，我们还将展示如何在特定场景中确保最佳性能，以及如何在测试性能时避免犯错。</p>
+<p>首先，让我们来探讨下为什么需要哈希表，在数据库中什么地方可以使用它们，以及如何使它们达到最佳。然后介绍网上各种哈希表的基准测试，解释如何正确地实现它们。最后，我们将谈论我们的零成本C++框架，它能够为特定用例生成理想的哈希表。</p>
+<h2 id="在ClickHouse中的应用"><a href="#在ClickHouse中的应用" class="headerlink" title="在ClickHouse中的应用"></a>在ClickHouse中的应用</h2><p>ClickHouse 非常显著的优势是其聚合海量数据的速度，在SQL中，聚合通过<code>GROUP BY</code>子句表示。大多数 SQL 数据库实现<code>GROUP BY</code>都是使用某种HashAgg算法，其中输入的数据行存储在哈希表中，以GroupBy列为键。实现过程中，基于分组列的数据类型（例如定宽整数、变宽字符串等）、唯一键的数量、它们的总数和其他因素，<strong>选择正确类型的哈希表</strong>对性能优化至关重要。ClickHouse 中针对 <code>GROUP BY</code> 有40多种高度优化的哈希表，在此之上，还构造了一个灵活而强大的框架，用于对不同的场景（包括<code>JOIN</code>）生成最佳的哈希表！</p>
+<p><img src="https://clickhouse.com/uploads/hash_table_main_methods_2fa4b9550e.png" alt="Markdown Image"></p>
+<p>哈希表是一种数据结构，它为插入、查找和删除操作提供了平均恒定的性能。对于<code>GROUP BY</code>聚合场景，删除操作对我们并不重要。</p>
+<p><img src="https://clickhouse.com/uploads/Hash_table_simple_ba2d7c7caf.png" alt="Markdown Image"></p>
+<p>让我们来看看上面的描述。大多数开发人员都会在早期的计算机科学课程中学习哈希表的结构。我们取一个我们想要插入的特定键，使用哈希函数对其进行哈希处理，并使用数组长度的除法余数来计算插入数组的位置。</p>
+<h2 id="哈希表设计"><a href="#哈希表设计" class="headerlink" title="哈希表设计"></a>哈希表设计</h2><p>哈希表在不同层面上需要许多设计决策，它们在细微之处都是非常复杂的数据结构。每项设计决策对哈希表本身都有重要影响，但多个设计决策的相互作用也会产生连锁反应。设计阶段的错误可能会使您的实现效率低下，显著降低性能。哈希表由<strong>哈希函数、碰撞解决方法、调整大小策略以及内存中单元格排列的各种可能性</strong>组成。</p>
+<h3 id="选择哈希函数"><a href="#选择哈希函数" class="headerlink" title="选择哈希函数"></a>选择哈希函数</h3><p>选择哈希函数是一个非常重要的设计决策，许多人经常因为<a target="_blank" rel="noopener" href="https://clickhouse.com/docs/en/sql-reference/functions/hash-functions">选择太多</a>而犯错，因为这些哈希函数看似都能产生同样优秀的随机值。接下去我们将概述这个决策过程中的主要问题：</p>
+<ol>
+<li>对于整数类型，许多人使用身份哈希函数是很常见的。这是错误的，因为真实数据的分布并不相同，你会遇到高频的 Hash 碰撞。此外，一些哈希函数针对整数进行了优化，如果数据允许，请使用它们而不是通用哈希函数。同样，除非你预期会遭到攻击，否则不要使用各种加密哈希函数，因为这些计算成本更高。例如，假设你使用的是每秒约1 GB吞吐量的加密Sip Hash函数，而City Hash函数的吞吐量约为每秒10 GB，这意味着你的表的吞吐量将被限制在每秒1 GB。</li>
+<li>不要使用像FNV1a这样的遗留哈希函数，因为它们速度慢，与竞争对手相比提供的分布效果差。这个特定的哈希函数被用于GCC标准库并已弃用。GitHub上的<a target="_blank" rel="noopener" href="https://github.com/rurban/smhasher">SMHasher仓库</a>包含了对各种哈希函数的测试，并展示了FNV1a无法通过任何严格的测试。</li>
+</ol>
+<p>在ClickHouse中，我们默认使用的哈希函数虽然分布相对较差，但对哈希表来说是好的。例如，对于整数类型，我们使用CRC-32C。这个哈希函数占用的CPU时间非常少，且因为可以用<a target="_blank" rel="noopener" href="https://www.intel.com/content/www/us/en/docs/intrinsics-guide/index.html#ig_expand=1436&text=crc">专用指令</a>实现，只需要两到三个周期，所以非常快。对于字符串，我们使用基于CRC-32C构建的自定义哈希函数。如果你不使用它，你可以使用像<a target="_blank" rel="noopener" href="https://opensource.googleblog.com/2014/03/introducing-farmhash.html">Farm Hash</a>这样的标准Hash函数。</p>
+<h3 id="Hash-碰撞"><a href="#Hash-碰撞" class="headerlink" title="Hash 碰撞"></a>Hash 碰撞</h3><p><img src="https://clickhouse.com/uploads/Hash_table_simple_2_d1a5ea2784.png" alt="Markdown Image"></p>
+<p>在任何哈希表中，根据<a target="_blank" rel="noopener" href="https://zh.wikipedia.org/wiki/%E7%94%9F%E6%97%A5%E9%97%AE%E9%A2%98">生日悖论</a>，总会出现不同的<code>KEY</code>落在同一个<code>Slot</code>的情况。假设我们插入了<code>Key K1</code>，它落在了表的第三个<code>Slot</code>上。现在我们试图插入 <code>Key K2</code>，根据除法的余数，它也落在了上面显示的相同<code>Slot</code>。接下来该该怎么处理, 有几种方法可以解决这个问题。</p>
+<ol>
+<li><p><a target="_blank" rel="noopener" href="https://zh.wikipedia.org/wiki/%E5%93%88%E5%B8%8C%E8%A1%A8#%E5%88%86%E7%A6%BB%E9%93%BE%E6%8E%A5%E6%B3%95">链表法</a>：在这种情况下，表格单元将使用链表或数组，我们将使用底层数据结构在同一个单元中放置下一个KEY。</p>
+</li>
+<li><p><a target="_blank" rel="noopener" href="https://zh.wikipedia.org/wiki/%E5%93%88%E5%B8%8C%E8%A1%A8#%E5%BC%80%E6%94%BE%E5%AF%BB%E5%9D%80%E6%B3%95">开放寻址法</a>：在这个方法中，我们将键放置在表中紧挨着的某个<code>Slot</code>。</p>
+</li>
+<li><p>更复杂的方法，如<a target="_blank" rel="noopener" href="https://zh.wikipedia.org/wiki/%E5%B8%83%E8%B0%B7%E9%B8%9F%E5%93%88%E5%B8%8C">布谷鸟哈希</a>或双向哈希。然而，这些方法有一些问题：</p>
+<ol>
+<li>它们通常难以实现，需要从内存中额外获取数据</li>
+<li>并且通常在规模扩大时会变慢，即使是在热路径上的大量代码也会显著减慢哈希表的查找速度。</li>
+</ol>
+</li>
+</ol>
+<p><img src="https://clickhouse.com/uploads/Hash_table_simple_chaining_3f8470994c.png" alt="Markdown Image"></p>
+<p>让我们从最简单的方法——链表法——开始谈起。这种方法使用链表来存储映射到同一单元的键。假设第一个键已经被插入，第二个键就会被追加到这个第一个键下面的链表中。之后在查找过程中，既要检查主单元也要检查其子链表中是否存在该键，这就是<code>std::unordered_map</code>的使用方式。</p>
+<p>为什么这种方法效率不高呢？因为它<strong>缓存局部性不高</strong>，导致性能不佳。它的优势在于它将在所有情况下都能工作，并且对使用的哈希函数不会非常挑剔；而且即使在高<a target="_blank" rel="noopener" href="https://zh.wikipedia.org/wiki/%E5%93%88%E5%B8%8C%E8%A1%A8#%E8%B4%9F%E8%BD%BD%E5%9B%A0%E5%AD%90">负载因子</a>的情况下，它也能正常工作。但不幸的是，它会使得 Allocator 负载非常重，即使在哈希表中调用<code>hot run</code>上的<code>Lookup</code>的也会非常废。因此，所有现代的哈希表都使用开放地址法。</p>
+<p><img src="https://clickhouse.com/uploads/Hash_table_simple_null_keys_bb6cd14678.png" alt="Markdown Image"></p>
+<p>在这篇博客中，我将讨论值得关注的三个哈希表。其中两个是Google的<strong>Flat Hash Map</strong>和<strong>Abseil Hash Map</strong>。Abseil是Google较新的框架之一，它对哈希表采取了稍微不同的方法。我们还将谈论<strong>ClickHouse中的哈希表</strong>。而所有这些哈希表都使用开放寻址法。对于这种方法，当第二个键被哈希并分配到与第一个键相同的<code>Slot</code>时，我们会将它放置在数组中的下一个<code>Slot</code>中——如上所示。选择下一个<code>Slot</code>取决于许多因素:</p>
+<p>​	<a target="_blank" rel="noopener" href="https://zh.wikipedia.org/wiki/%E7%BA%BF%E6%80%A7%E6%8E%A2%E6%B5%8B%E6%B3%95">线性探测</a>: 也就是说，我们简单地选择下一个<code>Slot</code>。</p>
+<p>​	<a target="_blank" rel="noopener" href="https://zh.wikipedia.org/wiki/%E4%BA%8C%E6%AC%A1%E6%8E%A2%E6%B5%8B%E6%B3%95">二次探测</a>:其中我们选择下一个<code>Slot</code>，乘数为2，即1、2、4、8等等。这提供了理想的缓存局部性，因为数据是按缓存行在处理器中获取的。这意味着一个哈希键查找只转换为一次从内存中获取。这种方法的主要问题是它需要一个适合你的数据的好哈希函数。假设我们选择了一个不好的哈希函数, 有时候在我们数组中形成”粘在一起”的簇。当这种情况出现时，我们将开始检查与我们正在寻找的值无关的键。这种方法也不适合大对象，因为它们会破坏所有的缓存局部性，使其主要优势变得多余。我们如何解决这个问题？我们在某处序列化大对象，并在哈希表中存储指向它们的指针。</p>
+<h2 id="RESIZE"><a href="#RESIZE" class="headerlink" title="RESIZE"></a>RESIZE</h2><p>另一个非常重要的概念是<a target="_blank" rel="noopener" href="https://zh.wikipedia.org/wiki/%E5%93%88%E5%B8%8C%E8%A1%A8#%E5%8A%A8%E6%80%81%E8%B0%83%E6%95%B4%E5%A4%A7%E5%B0%8F">动态调整大小</a>。首先，你需要决定调整大小的次数。有两种方法，第一种是按2的幂次方调整大小。这种方法的好处在于在表查找期间应该花费最少的时间进行除法，如果表在缓存中，它将在纳秒内执行。如果你不使用2的幂次方，就会发生除法，这是非常昂贵的。然而，如果表的大小总是2的幂次方，就可以用<a target="_blank" rel="noopener" href="https://github.com/ClickHouse/ClickHouse/blob/23.4/src/Common/HashTable/HashTable.h#L313">便宜的位移操作取代昂贵的除法操作</a>（&lt;&lt;）。还有一个更理论上的理由是使用接近2的幂次方但又是素数的幂次。缺点是你需要弄清楚如何避免除法。为此，我们可以使用某种常量切换或像<code>libdivide</code>这样的库。</p>
+<p>关于负载因子，ClickHouse和所有Google的哈希表（Abseil Hash Map除外）都使用0.5的负载因子。这是你可以在哈希表中使用的一个好的负载因子。Abseil Hash Map使用的负载因子约为0.9。</p>
+<p><img src="https://clickhouse.com/uploads/Hash_table_simple_open_address_7ad7589e6c.png" alt="Markdown Image"></p>
+<h2 id="内存排列"><a href="#内存排列" class="headerlink" title="内存排列"></a>内存排列</h2><p>最有趣的部分是每一个单元在内存中的排列方式，这对于保持哈希表功能正常运行非常重要。</p>
+<p>为什么我们需要一种特殊的方式来在内存中放置单元格？当有人第一次尝试编写自己的开放寻址哈希表时，他们就会面临这样的情况：你正在写代码，试图插入并处理第二个键碰巧落在第一个<code>Slot</code>但发生了碰撞的情况。我们需要弄清楚接下来该做什么。</p>
+<p>首先，我们将不得不遍历单元格，判断每个单元格是否为空，我们是否可以写入它，或者它是否已被删除。假设内存已经初始化，我们需要能够区分单元格是空的（即没有分配值或由于删除操作而变为空的）还是仅仅包含一个空值。例如，在ClickHouse中，我们支持可空类型。</p>
+<p><img src="https://clickhouse.com/uploads/Hash_table_simple_open_address_non_linear_87be12499f.png" alt="Markdown Image"></p>
+<p>在这种情况下，有几种选择。第一个选项是要求哈希表的用户提供一些键值来表示一个空单元格，以及表示已删除单元格的墓碑键。这些值永远不会被用户插入到哈希表中，即它不在实际数据中，因此我们可以使用它来识别单元格是空的还是已删除的。</p>
+<p>这种方法在Google Flat Hash Map中被使用。这种方法的主要缺点是我们必须让客户选择一些不会出现在他们数据中的键。有时候找到这样的键很容易，有时候很难，但总的来说，它使API变得复杂。这在图片中大致可见：哈希表中有<code>Slot</code>，其中一些是空键，一些是墓碑。这样，我们就可以安全地检查这个<code>Slot</code>是否为空。</p>
+<p><img src="https://clickhouse.com/uploads/Hash_table_simple_null_check_168201b366.png"></p>
+<p>ClickHouse采用的是一种更高级的方法，如上所述。我们不在哈希表中保留 <code>Null</code>单元格。我们有一些特殊的单元格用于 <code>Null</code>元素，并将其单独存储。在插入或查找哈希表之前，我们首先检查值是否为 <code>Null</code>，然后对其进行单独处理。这种方法的缺点是会出现额外的分支，但实际上CPU中的分支预测器非常有效地隐藏了额外的成本，因此我们的性能不受影响。</p>
+<p><img src="https://clickhouse.com/uploads/Hash_table_simple_google_version_a13fb37875.png" alt="Markdown Image"></p>
+<p>还有一种相当复杂的方法，这是谷歌最新哈希表所采用的。要达到这种方法，你需要从简单的情况开始。例如，我们想在某处保留关于单元格是否已删除或为 <code>Null</code>的信息。如果我们尝试将这些信息写入哈希表，我们将浪费额外的内存。所以，我们将它保存在别的地方，例如在一些元数据中。但我们发现我们只需要两个比特位，所以将它们花费在这些信息上是昂贵的。我们可以尝试使用整个字节，但其余的比特位怎么办？在谷歌的实现中，哈希函数的顶部53个比特位用于使用元数据搜索单元格，哈希函数的底部比特位在元数据中。</p>
+<p>这为什么有用？我们可以将这些数据放在寄存器中，并快速检查我们是否应该查看关联的单元格——例如，使用SSE指令。</p>
+<h2 id="Benchmarks"><a href="#Benchmarks" class="headerlink" title="Benchmarks"></a>Benchmarks</h2><p><img src="https://clickhouse.com/uploads/hash_table_benchmarks_69ac613223.png" alt="Markdown Image"></p>
+<p>如果你决定去看哪个哈希表是最佳的，那么互联网上的每个第二个人都写过他们最快的哈希表。如果你开始深入挖掘，你会发现这并不是真的。许多基准测试并没有覆盖重要的事情，也没有使用任何特定的场景。因此，不清楚哈希表是否真的快速。</p>
+<p>基准测试的主要问题是什么？它们通常不是在真实数据上进行的，而是在随机数字上进行的。随机数字的分布与真实数据不符。同样，很多时候没有考虑特定的场景。同样频繁的情况是，它们不显示基准测试代码，只显示各种图表，使得无法重复基准测试。</p>
+<p>基准测试应该如何进行？它们需要在真实数据和真实场景上完成。在ClickHouse中，真实的场景是数据聚合，我们从<a target="_blank" rel="noopener" href="https://clickhouse.com/docs/en/getting-started/example-datasets/metrica">网络分析数据集</a>中获取数据，你可以从我们的网站下载。</p>
+<p>现在让我们来看看性能基准，并尝试分析不同的设计决策如何影响哈希表的性能。</p>
+<p>以下结果基于包含约2,071,4865个唯一值的<code>WatchId</code>列。这些值不适合CPU缓存，并且占用大约600MB，迫使访问主内存。这里的计时表示聚合所有值的总运行时间。</p>
+<table>
+<thead>
+<tr>
+<th align="center">Hashtable</th>
+<th align="left">Time (seconds)</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="center">ClickHouse HashMap</td>
+<td align="left">7,366 secs</td>
+</tr>
+<tr>
+<td align="center">Google DenseMap</td>
+<td align="left">10,089 secs</td>
+</tr>
+<tr>
+<td align="center">Abseil HashMap</td>
+<td align="left">9,011 secs</td>
+</tr>
+<tr>
+<td align="center">std::unordered_map</td>
+<td align="left">44,758 secs</td>
+</tr>
+</tbody></table>
+<p>如果我们查看这个基准测试，我们会看到ClickHouse和其哈希表远远领先于<code>std::unordered_map</code>。为什么？因为正如我所说的，<code>std::unordered_map</code>不是高缓存局部性的；具体来说，这些数据不是放置在Lx缓存中的。我们可以使用<code>perf stat</code>来确认我们的假设，即<code>std::unordered_map</code>有更多的缓存未命中，这会减慢速度。</p>
+<p><code>std::unordered_map</code>使用链表法解决冲突，对缓存不友好，因为它导致内存访问模式具有较差的空间局部性，这会增加缓存未命中的概率。另一方面，开放寻址法，如在ClickHouse中使用的，通常会在数组中连续地存储元素，这对缓存更为友好，因为它提高了数据的空间局部性。</p>
+<p>性能分析工具，如<code>perf stat</code>，可以用来观察硬件事件，比如缓存未命中的次数。如果<code>std::unordered_map</code>在性能基准测试中表现不佳，通常会观察到较高数量的缓存未命中事件。这些额外的缓存未命中需要CPU等待数据从主内存加载，这会导致延迟，并最终降低整体性能。</p>
+<p>总之，高效的哈希表实现需要考虑数据的缓存局部性，以减少缓存未命中并优化性能。基准测试提供了有价值的见解，揭示了不同哈希表实现之间的性能差异，这些性能差异往往与它们对缓存友好程度有关。</p>
+<table>
+<thead>
+<tr>
+<th align="center">Hashtable</th>
+<th align="left">Cache misses</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="center">ClickHouse HashMap</td>
+<td align="left">329,644,616</td>
+</tr>
+<tr>
+<td align="center">Google DenseMap</td>
+<td align="left">383,350,820</td>
+</tr>
+<tr>
+<td align="center">Abseil HashMap</td>
+<td align="left">415,869,669</td>
+</tr>
+<tr>
+<td align="center">std::unordered_map</td>
+<td align="left">1,939,811,017</td>
+</tr>
+</tbody></table>
+<p>是的，访问L1或L2缓存与访问主内存相比确实有更高的成本。我们可以假设，为了让哈希表以最大速度工作，它必须优化缓存局部性。</p>
+<p>我们来看一个略有不同的性能基准，在这个基准测试中，所有数据都可以进入缓存。在这种情况下，我们看到<code>std::unordered_map</code>不再那么慢了。在这种情况下，我们使用一个<code>RegionID</code>列，它有来自一组9040个唯一值的重复值，这些值可以适应Lx缓存。</p>
+<p><img src="https://clickhouse.com/uploads/hash_table_latency_4319105d3e.png" alt="Markdown Image"></p>
+<table>
+<thead>
+<tr>
+<th align="center">Hashtable</th>
+<th align="left">Time (secs)</th>
+</tr>
+</thead>
+<tbody><tr>
+<td align="center">ClickHouse HashMap</td>
+<td align="left">0.201s</td>
+</tr>
+<tr>
+<td align="center">Google DenseMap</td>
+<td align="left">0.261s</td>
+</tr>
+<tr>
+<td align="center">Abseil HashMap</td>
+<td align="left">0.307s</td>
+</tr>
+<tr>
+<td align="center">std::unordered_map</td>
+<td align="left">0.466s</td>
+</tr>
+</tbody></table>
+<h2 id="C-hash-table-design"><a href="#C-hash-table-design" class="headerlink" title="C++ hash table design"></a>C++ hash table design</h2><p>到目前为止，我们已经专注于解决方案的算法设计。但为了让这一切运作良好，我们需要开发一个灵活而强大的C++封装。</p>
+<p>我们的哈希表封装使用了基于策略的设计，即每个设计选择都成为哈希表接口的一个独立部分。主要接口包括哈希函数、分配器、单元格（这是我们表中的一个重要元素）、生长器（调整大小策略的接口）以及哈希表本身，它将所有这些组件结合在一起。</p>
+<p>我们从哈希函数开始。这与C++11中引入的<code>std::hash</code>接口相同，没有什么新的。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">template</span> &lt;<span class="keyword">typename</span> T&gt;</span><br><span class="line"><span class="keyword">struct</span> <span class="title class_">Hash</span> &#123;</span><br><span class="line">    <span class="function"><span class="type">size_t</span> <span class="title">operator</span> <span class="params">()</span> <span class="params">(T key)</span> <span class="type">const</span> </span></span><br><span class="line"><span class="function">    </span>&#123; </span><br><span class="line">        <span class="keyword">return</span> <span class="built_in">DefaultHash</span>&lt;T&gt;(key);</span><br><span class="line">    &#125;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>分配器是标准库分配器接口的一个略有修改的版本，因为我们的版本支持<code>realloc</code>。为什么我们需要<code>realloc</code>？在Linux上，我们对大型哈希表使用<code>mmap</code>和<code>mremap</code>。为了支持这一点，我们需要在我们的接口中提供一个<code>realloc</code>方法。</p>
+<p>以下分配器使用<code>mmap</code>和<code>mremap</code>来处理大内存块。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">class</span> <span class="title class_">Allocator</span></span><br><span class="line">&#123;</span><br><span class="line">    <span class="function"><span class="type">void</span> * <span class="title">alloc</span><span class="params">(<span class="type">size_t</span> size, <span class="type">size_t</span> alignment)</span></span>;</span><br><span class="line">    <span class="function"><span class="type">void</span> <span class="title">free</span><span class="params">(<span class="type">void</span> * buf, <span class="type">size_t</span> size)</span></span>;</span><br><span class="line">    <span class="function"><span class="type">void</span> * <span class="title">realloc</span><span class="params">(<span class="type">void</span> * buf, size t old size, <span class="type">size_t</span> <span class="keyword">new</span> size)</span></span>;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>还有一种分配器，当我们使用自定义策略时，它会从一开始就在堆栈上分配内存。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">AllocatorWithStackMemory&lt;HashTableAllocator, initialbytes&gt;</span><br></pre></td></tr></table></figure>
+
+<p>哈希表单元格是我们哈希表的一个完整元素；你可以在其中写入哈希值，从中获取哈希值，并检查它是否为空。此外，单元格本身也可以为哈希表提供信息，即它了解哈希表内部的内容，因为它由其状态参数化。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">template</span> &lt;<span class="keyword">typename</span> Key, <span class="keyword">typename</span> Mapped, <span class="keyword">typename</span> HashTableState&gt; </span><br><span class="line"><span class="keyword">struct</span> <span class="title class_">HashTableCell</span> &#123;</span><br><span class="line">    ...</span><br><span class="line">    <span class="function"><span class="type">void</span> <span class="title">setHash</span><span class="params">(<span class="type">size_t</span> hash_value)</span></span>; </span><br><span class="line">    <span class="function"><span class="type">size_t</span> <span class="title">getHash</span><span class="params">(<span class="type">const</span> Hash &amp; hash)</span> <span class="type">const</span></span>;</span><br><span class="line">    <span class="function"><span class="type">bool</span> <span class="title">isZero</span><span class="params">(<span class="type">const</span> State &amp; state)</span></span>; </span><br><span class="line">    <span class="function"><span class="type">void</span> <span class="title">setZero</span><span class="params">()</span></span>;</span><br><span class="line">    ...</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>以下是我们的调整大小策略的接口，具有获取哈希表中位置的方法，移动到下一个元素的方法，检查插入下一个元素是否会导致表溢出的方法，以及调整大小本身的方法。让我们在代码中定义它们。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">struct</span> <span class="title class_">HashTableGrower</span></span><br><span class="line">    <span class="function"><span class="type">size_t</span> <span class="title">place</span><span class="params">(<span class="type">size_t</span> x)</span> <span class="type">const</span></span>; </span><br><span class="line">    <span class="function"><span class="type">size_t</span> <span class="title">next</span><span class="params">(<span class="type">size_t</span> pos)</span> <span class="type">const</span></span>; </span><br><span class="line">    <span class="function"><span class="type">bool</span> <span class="title">willNextElementOverflow</span><span class="params">()</span> <span class="type">const</span></span>; </span><br><span class="line">    <span class="function"><span class="type">void</span> <span class="title">increaseSize</span><span class="params">()</span></span>;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>哈希表是通过C++模版生成，模版里组合了上述这四种接口的实现。与使用virtual方法在运行时进行组合不同，<a target="_blank" rel="noopener" href="https://github.com/ClickHouse/ClickHouse/blob/23.4/src/Common/HashTable/HashTable.h#L444">这种方法</a>确保了最佳性能，因为编译器能够单独优化每个生成的哈希表。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">template</span></span><br><span class="line">&lt;</span><br><span class="line">    <span class="keyword">typename</span> Key, </span><br><span class="line">    <span class="keyword">typename</span> Cell, </span><br><span class="line">    <span class="keyword">typename</span> Hash, </span><br><span class="line">    <span class="keyword">typename</span> Grower, </span><br><span class="line">    <span class="keyword">typename</span> Allocator</span><br><span class="line"></span><br><span class="line">&gt;</span><br><span class="line"><span class="keyword">class</span> <span class="title class_">HashTable</span> :</span><br><span class="line">    <span class="keyword">protected</span> Hash, </span><br><span class="line">    <span class="keyword">protected</span> Allocator, </span><br><span class="line">    <span class="keyword">protected</span> Cell::State; </span><br><span class="line">    <span class="keyword">protected</span> ZeroValueStorage&lt;Cell::need_zero_value_storage, Cell&gt;</span><br></pre></td></tr></table></figure>
+
+<p>例如，我们在使用<code>ZeroValueStorage </code>时，如果这些基类不包含数据，我们也就不会浪费额外的内存来存储它。再例如，我们上面提到ClickHouse 会特地生成<code> the zero value cell</code>，并将其放置在一个特殊的<code>zero-value</code>存储中。但这只在某些情况下是必要的， 假设在某些情况下<code>zero-value</code>存储是一个什么也不做的特化，编译器将移除不必要的代码，那也没有什么会变慢。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">template</span> ‹<span class="type">bool</span> need_zero_value_storage, <span class="keyword">typename</span> Cell&gt; </span><br><span class="line"><span class="keyword">struct</span> <span class="title class_">ZeroValueStorage</span>;</span><br><span class="line"></span><br><span class="line"><span class="keyword">template</span> &lt;<span class="keyword">typename</span> Cell&gt; </span><br><span class="line"><span class="keyword">struct</span> <span class="title class_">ZeroValueStorage</span>&lt;<span class="literal">true</span>, Cell&gt;</span><br><span class="line">&#123; </span><br><span class="line">    ...</span><br><span class="line">&#125;;</span><br><span class="line"></span><br><span class="line"><span class="keyword">template</span> &lt;<span class="keyword">typename</span> Cell&gt;</span><br><span class="line"><span class="keyword">struct</span> <span class="title class_">ZeroValueStorage</span>&lt;<span class="literal">false</span>, Cell&gt;</span><br><span class="line">&#123; </span><br><span class="line">    ...</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>自定义调整大小策略给我们带来了什么？具有固定大小的自定义调整大小策略，以及没有解决哈希冲突的能力，将产生非常适合缓存最近元素的哈希表。使用步长不等于一的调整大小策略，我们可以获得例如二次探测，这可以方便检查各种性能基准。</p>
+<p>将状态存储在单元格中的能力帮助我们在单元格中存储有用的信息，比如哈希值。这有什么用？对于我们不想在字符串哈希表中重新计算哈希函数的情况。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">struct</span> <span class="title class_">HashMapCellWithSavedHash</span> : <span class="keyword">public</span> HashMapCell</span><br><span class="line">&#123;</span><br><span class="line"></span><br><span class="line">    <span class="type">size_t</span> saved_hash; </span><br><span class="line">    <span class="function"><span class="type">void</span> <span class="title">setHash</span><span class="params">(<span class="type">size_t</span> hash_value)</span> </span>&#123; saved_hash = hash_value; &#125; </span><br><span class="line">    <span class="function"><span class="type">size_t</span> <span class="title">getHash</span><span class="params">(<span class="type">const</span> Hash &amp;)</span> <span class="type">const</span> </span>&#123; <span class="keyword">return</span> saved_hash; &#125;</span><br><span class="line"></span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>我们还可以创建一个可以快速清空的哈希表。当我们有一个巨大的哈希表，我们已经用数据填满它，现在我们想要重用它时，这会非常有用。为了删除哈希表中的所有元素，我们使用表的版本作为状态——我们既在单元格中存储版本，也在表本身中存储版本。在检查单元格是否为空时，我们只需要比较单元格和哈希表的版本。如果我们需要快速删除，我们将哈希表版本加一。这比尝试删除哈希表中的所有单元格更高效，后者将要求我们遍历它并引发显著的缓存未命中——导致性能下降。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line">strut FixedClearableHashMapCell </span><br><span class="line">&#123; </span><br><span class="line">    strut ClearableHashSetState </span><br><span class="line">    &#123; </span><br><span class="line">        UInt32 version = <span class="number">1</span>; </span><br><span class="line">    &#125;; </span><br><span class="line">    </span><br><span class="line">    <span class="keyword">using</span> State = ClearableHashSetState; </span><br><span class="line">    </span><br><span class="line">    UInt32 version = <span class="number">1</span>; </span><br><span class="line">    </span><br><span class="line">    <span class="function"><span class="type">bool</span> <span class="title">isZero</span><span class="params">(<span class="type">const</span> State &amp; st)</span> <span class="type">const</span> </span>&#123; <span class="keyword">return</span> version ! = st.version; &#125;</span><br><span class="line">    </span><br><span class="line">    <span class="function"><span class="type">void</span> <span class="title">setZero</span><span class="params">()</span> </span>&#123; version = <span class="number">0</span>; &#125;</span><br><span class="line"></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>另一个有趣的技巧是LRU缓存。这是<a target="_blank" rel="noopener" href="https://www.educative.io/implement-least-recently-used-cache">LRU淘汰策略</a>的实现。通常，这是通过一个双向LRU列表和一个哈希表来实现的，哈希表可以快速映射键到列表中的位置。每次我们引用特定的键时，我们需要将值移动到列表的“最近”端，并更新哈希映射中的值。如果一个元素还没有存储在LRU缓存中，我们就移除列表“最不常用”端的元素，并插入新元素。当列表变满时，我们从列表的开始移除元素。这样，列表将始终包含最新的元素。</p>
+<p>使用单独的列表和哈希表实现LRU缓存并不是最优的，因为它使用了两个容器。在ClickHouse的情况下，我们想出了如何在单个容器内实现这一点。在哈希表单元格中，我们存储指向下一个和上一个元素的指针，从而在哈希表内部形成了一个双向链表。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">struct</span> <span class="title class_">LRUHashMapCell</span> </span><br><span class="line">&#123; </span><br><span class="line">    <span class="type">static</span> <span class="type">bool</span> <span class="keyword">constexpr</span> need_to_notify_cell_during_move = <span class="literal">true</span>; </span><br><span class="line">    </span><br><span class="line">    <span class="function"><span class="type">static</span> <span class="type">void</span> <span class="title">move</span><span class="params">(LRUHashMapCell * old_loc, LRUHashMapCell * new_loc)</span></span>; </span><br><span class="line">    </span><br><span class="line">    LRUHashMapCell * next = <span class="literal">nullptr</span>;</span><br><span class="line">    </span><br><span class="line">    LRUHashMapCell * prev =  <span class="literal">nullptr</span>;</span><br><span class="line">    </span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>要实现这一点，我们存储两个指针，并使用Boost Intrusive库。下面我们展示了这方面最重要的部分。我们创建一个侵入式列表，并将其作为列表使用。我们在单元格中声明了到下一个元素和上一个元素的指针，这足以让我们在单元格的顶部创建一个侵入式列表。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">using</span> LRUList = boost:: intrusive:: list</span><br><span class="line">    &lt;</span><br><span class="line">        Cell,</span><br><span class="line">        boost::intrusive::value_traits&lt;LRUHashMapCellIntrusiveValueTraits&gt;,</span><br><span class="line">        boost::intrusive::constant_time_size&lt;<span class="literal">false</span>&gt;</span><br><span class="line">    &gt;;</span><br><span class="line">    </span><br><span class="line">LRUList ru_list ;</span><br></pre></td></tr></table></figure>
+
+<p>我们有几个专门为各种场景设计的哈希表。例如，small table是一个哈希表，它是一个数组。这有什么用？它放在L1缓存中，并实现了哈希表接口。这很有用，如果我们需要实现一个简单的算法。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">template</span> &lt;<span class="keyword">typename</span> Key, <span class="keyword">typename</span> Cell, <span class="type">size_t</span> capacity&gt; </span><br><span class="line"><span class="keyword">class</span> <span class="title class_">SmallTable</span> : <span class="keyword">protected</span> Cell:: State </span><br><span class="line">&#123;</span><br><span class="line"></span><br><span class="line">    <span class="type">size_t</span> m_size = <span class="number">0</span>; </span><br><span class="line">    Cell buf[capacity];</span><br><span class="line">    ...</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>我们还有一个更有趣的哈希表——<a target="_blank" rel="noopener" href="https://www.mdpi.com/2076-3417/10/6/1915">字符串哈希表</a>。它是由来自中国的一位研究生贡献给我们的。这是四个不同长度字符串的哈希表，对于我们使用不同的哈希函数。更具体地说，这个哈希表由4个哈希表组成：</p>
+<ul>
+<li>对于大小为0-8字节的字符串</li>
+<li>对于大小为9-16字节的字符串</li>
+<li>对于大小为17-24字节的字符串</li>
+<li>对于大于24字节的字符串</li>
+</ul>
+<p>另一个非常有趣的哈希表是两级哈希表。它由256个哈希表组成。如果你不是哈希表的粉丝，为什么这可能是必要的？当我们例如执行GROUP BY操作时，我们希望在多个线程中进行。因此，我们需要填充表格，然后合并它们。我们可以使用无锁哈希表，但我们团队中没有人喜欢无锁，所以我们使用两级哈希表。</p>
+<p>这通过在每个线程中创建两级哈希表来工作。例如，如果我们有四个流，我们得到一个256列（表格）和四行（流）的矩阵。我们正在向这些表格中的一个插入数据。例如，我们根据下面显示的公式进行分布。然后，当我们需要合并表格时，我们使用最小的同步并通过列进行合并。最后，这里没有什么会变慢。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">size_t</span> <span class="title">getBucketFromHash</span><span class="params">(<span class="type">size_t</span> hash_value)</span> </span>&#123;</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> (hash_value &gt;&gt; (<span class="number">32</span> - BITS_FOR_BUCKET)) &amp; MAX_BUCKET;</span><br><span class="line"></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>是的，你们已经开发了自己相当灵活和强大的<a target="_blank" rel="noopener" href="https://github.com/ClickHouse/ClickHouse/blob/master/src/Common/HashTable/HashTable.h">框架</a>来实现哈希表。从中，<a target="_blank" rel="noopener" href="https://github.com/ClickHouse/ClickHouse/blob/master/src/Common/examples/integer_hash_tables_benchmark.cpp">你可以</a>得到适用于不同场景的哈希表。</p>
+<blockquote>
+<p>原文：<a target="_blank" rel="noopener" href="https://clickhouse.com/blog/hash-tables-in-clickhouse-and-zero-cost-abstractions">https://clickhouse.com/blog/hash-tables-in-clickhouse-and-zero-cost-abstractions</a></p>
+</blockquote>
+
+    </div>
+
+    
+    
+    
+
+      <footer class="post-footer">
+
+        
+
+
+        
+      </footer>
+    
+  </article>
+  
+  
+  
+
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%BC%95%E8%A8%80"><span class="nav-number">1.</span> <span class="nav-text">引言</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%9C%A8ClickHouse%E4%B8%AD%E7%9A%84%E5%BA%94%E7%94%A8"><span class="nav-number">2.</span> <span class="nav-text">在ClickHouse中的应用</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%93%88%E5%B8%8C%E8%A1%A8%E8%AE%BE%E8%AE%A1"><span class="nav-number">3.</span> <span class="nav-text">哈希表设计</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E9%80%89%E6%8B%A9%E5%93%88%E5%B8%8C%E5%87%BD%E6%95%B0"><span class="nav-number">3.1.</span> <span class="nav-text">选择哈希函数</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Hash-%E7%A2%B0%E6%92%9E"><span class="nav-number">3.2.</span> <span class="nav-text">Hash 碰撞</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#RESIZE"><span class="nav-number">4.</span> <span class="nav-text">RESIZE</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%86%85%E5%AD%98%E6%8E%92%E5%88%97"><span class="nav-number">5.</span> <span class="nav-text">内存排列</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#Benchmarks"><span class="nav-number">6.</span> <span class="nav-text">Benchmarks</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#C-hash-table-design"><span class="nav-number">7.</span> <span class="nav-text">C++ hash table design</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">Yifei Wu</p>
+  <div class="site-description" itemprop="description">开发心路历程笔记本</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">1</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://x.com/FeigeeWu" title="Twitter → https:&#x2F;&#x2F;x.com&#x2F;FeigeeWu" rel="noopener" target="_blank"><i class="fab fa-twitter fa-fw"></i>Twitter</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="https://www.zhihu.com/people/eager-wu" title="Zhihu → https:&#x2F;&#x2F;www.zhihu.com&#x2F;people&#x2F;eager-wu" rel="noopener" target="_blank"><i class="fa-hand-o-right fa-fw"></i>Zhihu</a>
+      </span>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2024</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">Yifei Wu</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>

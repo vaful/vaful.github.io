@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"always","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":false,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
+  </script>
+
+  <meta name="description" content="关联子查询 《Unnesting Arbitrary Queries》 这篇文章主要是HyPer他们针对任意的关联查询场景，提出了一种通用解关联的办法。 通用解关联方式算法更为复杂，改写完的潜在计划执行成本会比简单的按照特定模式下的解关联代价要更高。所以解关联的思路分成两步，1. 针对常见的Pattern 直接按照简单解关联转化 2. 解决不了的，尝试更通用的推导方式。 背景SQL-99标准允许在">
+<meta property="og:type" content="website">
+<meta property="og:title" content="飞哥编程笔记">
+<meta property="og:url" content="http://example.com/posts/%E8%A7%A3%E5%85%B3%E8%81%94.html">
+<meta property="og:site_name" content="飞哥编程笔记">
+<meta property="og:description" content="关联子查询 《Unnesting Arbitrary Queries》 这篇文章主要是HyPer他们针对任意的关联查询场景，提出了一种通用解关联的办法。 通用解关联方式算法更为复杂，改写完的潜在计划执行成本会比简单的按照特定模式下的解关联代价要更高。所以解关联的思路分成两步，1. 针对常见的Pattern 直接按照简单解关联转化 2. 解决不了的，尝试更通用的推导方式。 背景SQL-99标准允许在">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2024-10-11T06:49:45.053Z">
+<meta property="article:modified_time" content="2024-10-11T06:49:45.053Z">
+<meta property="article:author" content="Yifei Wu">
+<meta property="article:tag" content="数据库 分布式 OLAP">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/posts/%E8%A7%A3%E5%85%B3%E8%81%94">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : false,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title> | 飞哥编程笔记
+</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">飞哥编程笔记</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">阿飞学习备忘录</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+  </ul>
+</nav>
+
+
+
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+  
+  
+
+          <div class="content page posts-expand">
+            
+
+    
+    
+    
+    <div class="post-block" lang="zh-CN">
+      <header class="post-header">
+
+<h1 class="post-title" itemprop="name headline">
+</h1>
+
+<div class="post-meta">
+  
+
+</div>
+
+</header>
+
+      
+      
+      
+      <div class="post-body">
+          <p>关联子查询</p>
+<p>《Unnesting Arbitrary Queries》 这篇文章主要是HyPer他们针对任意的关联查询场景，提出了一种通用解关联的办法。</p>
+<p>通用解关联方式算法更为复杂，改写完的潜在计划执行成本会比简单的按照特定模式下的解关联代价要更高。所以解关联的思路分成两步，1. 针对常见的Pattern 直接按照简单解关联转化 2. 解决不了的，尝试更通用的推导方式。</p>
+<h2 id="背景"><a href="#背景" class="headerlink" title="背景"></a>背景</h2><p>SQL-99标准允许在查询的几乎所有位置使用关联子查询。从用户的角度来看，关联子查询可以极大地简化复杂 SQL 的书写。然而，与外部查询相关的嵌套查询往往会导致 <code>dependent joins </code>，并采用<code>nestloop</code>执行，从而导致性能不佳，详细说明见上一篇文章。目前大多数系统采用启发式方法去做解关联，虽然这些方法均可以显著地加快查询处理速度，但通常仅限于某些类型的查询。</p>
+<h2 id="关联查询案例"><a href="#关联查询案例" class="headerlink" title="关联查询案例"></a>关联查询案例</h2><p>假设我们有两张表，学生和考试信息</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line">students:&#123;[id,name,major,year,...]&#125;</span><br><span class="line"></span><br><span class="line">exams:&#123;[sid,course,curriculum,date,...]&#125;</span><br></pre></td></tr></table></figure>
+
+<h3 id="场景1-查询每个学生的最佳考试成绩（根据德国评分系统，其中数字越低表示成绩越好）"><a href="#场景1-查询每个学生的最佳考试成绩（根据德国评分系统，其中数字越低表示成绩越好）" class="headerlink" title="场景1: 查询每个学生的最佳考试成绩（根据德国评分系统，其中数字越低表示成绩越好）"></a>场景1: 查询每个学生的最佳考试成绩（根据德国评分系统，其中数字越低表示成绩越好）</h3><figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">select</span> s.name,e.course</span><br><span class="line">       <span class="keyword">from</span>   students s,exams e</span><br><span class="line">       <span class="keyword">where</span>  s.id<span class="operator">=</span>e.sid <span class="keyword">and</span></span><br><span class="line">              e.grade<span class="operator">=</span>(<span class="keyword">select</span> <span class="built_in">min</span>(e2.grade)</span><br><span class="line">                       <span class="keyword">from</span> exams e2</span><br><span class="line">                       <span class="keyword">where</span> s.id<span class="operator">=</span>e2.sid)</span><br></pre></td></tr></table></figure>
+
+<p> 大家可以很轻松的就想到，用Join来完成等价效果，具体SQL如下。这种子查询的评估不再依赖于 <code>s </code>的值，因此可以使用常规Join。</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">select s.name,e.course</span><br><span class="line">        from   students s,exams e,</span><br><span class="line">               (select e2.sid as id, min(e2.grade) as best</span><br><span class="line">                from exams e2</span><br><span class="line">                group by e2.sid) m</span><br><span class="line">        where  s.id=e.sid and m.id=s.id and</span><br><span class="line">               e.grade=m.best</span><br></pre></td></tr></table></figure>
+
+
+
+<h3 id="场景2：筛选出-CS-或Games-Eng-专业中需要重新考试的学生和对应的考试科目。如果学生在这些考试中的成绩低于高年级同学的相同科目的平均成绩，那么就需要重新考试。"><a href="#场景2：筛选出-CS-或Games-Eng-专业中需要重新考试的学生和对应的考试科目。如果学生在这些考试中的成绩低于高年级同学的相同科目的平均成绩，那么就需要重新考试。" class="headerlink" title="场景2：筛选出 CS 或Games Eng 专业中需要重新考试的学生和对应的考试科目。如果学生在这些考试中的成绩低于高年级同学的相同科目的平均成绩，那么就需要重新考试。"></a>场景2：筛选出 <code>CS</code> 或<code>Games Eng</code> 专业中需要重新考试的学生和对应的考试科目。如果学生在这些考试中的成绩低于高年级同学的相同科目的平均成绩，那么就需要重新考试。</h3><figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">select</span> s.name, e.course</span><br><span class="line">   <span class="keyword">from</span>   students s, exams e</span><br><span class="line">   <span class="keyword">where</span>  s.id<span class="operator">=</span>e.sid <span class="keyword">and</span></span><br><span class="line">     (s.major <span class="operator">=</span> ’CS’ <span class="keyword">or</span> s.major <span class="operator">=</span> ’Games Eng’) <span class="keyword">and</span></span><br><span class="line">     e.grade<span class="operator">&gt;=</span>(<span class="keyword">select</span> <span class="built_in">avg</span>(e2.grade)<span class="operator">+</span><span class="number">1</span> </span><br><span class="line">               <span class="keyword">from</span> exams e2          </span><br><span class="line">               <span class="keyword">where</span> s.id<span class="operator">=</span>e2.sid <span class="keyword">or</span>   </span><br><span class="line">                     (e2.curriculum<span class="operator">=</span>s.major <span class="keyword">and</span> </span><br><span class="line">                     s.year<span class="operator">&gt;</span>e2.date))</span><br></pre></td></tr></table></figure>
+
+<p>论文对上面改写成普通Join的情况做了个总结。上述我们说过的简单解关联技术依赖于一个特殊条件，**子查询中用到的属性值（比如场景1中的e2.id）可以用来替换外层查询确定的自由变量(s.id)**。但在这里，情况并非如此，例如，s.year 不能被替换。没有精确理解这句话含义，直接把原文附上了。</p>
+<blockquote>
+<p>To the best of our knowledge, no existing system can unnest such a query. And indeed, unnesting this query is hard: Standard unnesting techniques rely upon the fact that at- tributes available within the query can be used to substitute the free variables determined by the outer query. This is not the case here, s.year for example cannot be substituted.</p>
+</blockquote>
+<p>​	针对上面这两种场景，特别是第二种这种包含复杂的条件和子查询结构时，直接等价替换成另一种SQL会比较难以证明其逻辑正确性，比如直接替换成非等值Join在算AGG是否能直接等价，需要花一些时间去做论证和例举了。所以个人认为通用的方法和关系代数推导在这儿就显得尤为重要了。</p>
+<p>​	</p>
+<h2 id="关系代数抽象和证明"><a href="#关系代数抽象和证明" class="headerlink" title="关系代数抽象和证明"></a>关系代数抽象和证明</h2><h3 id="简单场景"><a href="#简单场景" class="headerlink" title="&gt; 简单场景"></a>&gt; 简单场景</h3><p>​	针对TPCH Q21的这类查询，其大概会包含下面这个Parttern</p>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">select</span> ...</span><br><span class="line">   <span class="keyword">from</span>   lineitem l1 ...</span><br><span class="line">   <span class="keyword">where</span>  <span class="keyword">exists</span> (<span class="keyword">select</span> <span class="operator">*</span></span><br><span class="line">                  <span class="keyword">from</span> lineitem l2</span><br><span class="line">                  <span class="keyword">where</span> l2.l_orderkey <span class="operator">=</span> l1.l_orderkey)</span><br><span class="line">...</span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>变成关系代数表示如下</p>
+<p>![image-20241010112601927](&#x2F;Users&#x2F;yifei&#x2F;Library&#x2F;Application Support&#x2F;typora-user-images&#x2F;image-20241010112601927.png)</p>
+<p>可以轻松优化成普通Join</p>
+<p>![image-20241010113208037](&#x2F;Users&#x2F;yifei&#x2F;Library&#x2F;Application Support&#x2F;typora-user-images&#x2F;image-20241010113208037.png)</p>
+<p>​	一般而言，简单的去关联阶段，会将所有<strong>依赖性谓词</strong>上提到Plan的尽可能高处，可能超越JOIN、FILTER、AGG 等操作，直到到达一个点，<strong>该点处其所有属性均可从输入中获得</strong>。如果发生这种情况，<code>dependent joins</code>就可以转换为<code>普通 JOIN</code>，正如上面解释的等价性所示。</p>
+<p>​	注意，这种谓词上提纯粹是为了去关联的原因，进一步的优化步骤可能会将（部分）谓词再往下推，以便尽早过滤数据。</p>
+<p>​	</p>
+<blockquote>
+<h3 id="复杂场景"><a href="#复杂场景" class="headerlink" title="复杂场景"></a>复杂场景</h3></blockquote>
+<p>​	第一个简单等价变换如下，说明下每个符号的意义，等号左边表示集合T1 <code>dependent joins</code>  集合T2，Join条件是p。等号右边把这个<code>dependent joins</code>  转化成了一个普通Join和<code>dependent joins</code>  。 D的意思是从集合 T1 中选出被集合 T2 关联计算中的所需表达式的<strong>去重</strong>数据集和。</p>
+<p>​	所以其意思是，第一步先用去 T1 重过的数据集合 和 T2进行关联计算，第二步是用集合T1再和关联查询的结果做一次普通Join，需要保证集合T1的结果”正常”。</p>
+<p>![image-20240927215048287](&#x2F;Users&#x2F;yifei&#x2F;Library&#x2F;Application Support&#x2F;typora-user-images&#x2F;image-20240927215048287.png)</p>
+<p>按照上面这个变化，场景1中对应的计划图变化如下，等价规则让我们将最佳成绩的计算限制在每个学生身上，而不是对每一对 <code>(student, exam)</code> 进行重复计算。因此，<code>dependent joins</code> 仅在学生的ID投影上执行。</p>
+<p>从某种程度上说，这构成了从外部（左）连接参数向内部（右）参数的侧面信息传递，从而进一步去重且降低执行开销。因此，重要的是要按照真正消除重复的语义来实现Projection，而不是按照SQL中保留重复的语义来实现。</p>
+<p>这里最最重要的事情就是将一个普通的<code>dependent joins</code>改造成一个普通Join和一个去重后的<code>multi-set</code>的<code>dependent joins</code>, 这非常有利于在后续的等价变化能够进一步做下推和去除关联查询。</p>
+<p>![image-20240927223544915](&#x2F;Users&#x2F;yifei&#x2F;Library&#x2F;Application Support&#x2F;typora-user-images&#x2F;image-20240927223544915.png)</p>
+<p>第二步. 依赖Join下推</p>
+<p>目标： 依赖连接下推的最终目标是达到这样一个状态：右侧不再依赖于左侧，即</p>
+<p>![image-20240927233519856](&#x2F;Users&#x2F;yifei&#x2F;Library&#x2F;Application Support&#x2F;typora-user-images&#x2F;image-20240927233519856.png)</p>
+<ul>
+<li><p><strong>下推过选择</strong> (<em>σ</em>)：直接先算里面的JOIN，如下。<br>$$<br>D1 ⋈ σp(T2) &#x3D; σp(D1 ⋈T2 ) &#x2F;&#x2F; ⋈指的仍然是 dependent-join<br>$$</p>
+</li>
+<li><p><strong>下推过连接（⋈）</strong>：如果 T2 本身包含连接，需要根据Join的类型（Inner、left等）和具体条件来决定如何下推。</p>
+<ul>
+<li><p>InnerJoin  的变化规则如下。</p>
+<ul>
+<li>如果<strong>依赖连接产生的值仅在T1或者T2的一侧</strong>，那么可以将这个依赖连接推到对应的那一侧。这意味着，如果只有一侧的查询逻辑依赖于子查询的结果，那么就只在那一侧进行连接操作。</li>
+<li>如果<strong>依赖查询的两侧都需要</strong>，那么需要在两边都复制这个依赖连接，然后再进行一次普通Join。请注意，这种推下规则过于悲观，如果我们将依赖连接推到两边，我们必须增加连接谓词，以便两边都匹配D值。但是请注意，相对于原始表达式，T1和T2都至少被执行了|D|次。</li>
+</ul>
+<p>![image-20240929154950122](&#x2F;Users&#x2F;yifei&#x2F;Library&#x2F;Application Support&#x2F;typora-user-images&#x2F;image-20240929154950122.png)</p>
+</li>
+<li><p>OuterJoin 和 AntiJoin</p>
+<ul>
+<li>这两个主要区别在于LEFT和RIGHT的时候，如果是Null 侧的话就不能分开，结果会错误，这里需要小心。</li>
+</ul>
+<p>![image-20240929160035028](&#x2F;Users&#x2F;yifei&#x2F;Library&#x2F;Application Support&#x2F;typora-user-images&#x2F;image-20240929160035028.png)</p>
+</li>
+</ul>
+</li>
+<li><p><strong>投影推下</strong> (π)：如果 T2*上有投影，可以推到依赖连接的两边，计算之后把投影的值加上就可以。</p>
+</li>
+<li><p><strong>聚合推下</strong> (<em>γ</em>)：如果 <em>T</em>2 上有聚合，需要确保依赖连接产生的属性在进行分组操作时得以保留。</p>
+<p>聚合函数不变，GrouBy需要加上T2依赖的列属性值。<strong>改造完需要考虑nullable属性等是否能够满足，论文中没有说明，会影响正确性</strong>。</p>
+<p>![image-20240929163059449](&#x2F;Users&#x2F;yifei&#x2F;Library&#x2F;Application Support&#x2F;typora-user-images&#x2F;image-20240929163059449.png)</p>
+</li>
+<li><p><strong>下推过Set</strong></p>
+</li>
+</ul>
+<p>​		![image-20240929163300075](&#x2F;Users&#x2F;yifei&#x2F;Library&#x2F;Application Support&#x2F;typora-user-images&#x2F;image-20240929163300075.png)</p>
+<p>​	</p>
+<p>​	通过上述这些转换，每个依赖连接要么在某个点通过替换被消除，要么最终在基础关系之前（<strong>or ends up in front of a base relation</strong> ），在这种情况下它可以被转化为非依赖连接。因此，依赖连接可以从任何查询中消除。</p>
+<p>P.S 没有完全理解这个 <code>in front of a base relation</code> 的具体含义, 在基础的表上的 <code>depenant joins</code> 转化成一个普通Join。</p>
+<p>这种方法的一个潜在风险是 <code>D </code>可能会非常大，因为它是嵌套子查询的所有变量绑定的集合。但幸运的是，现实情况并非如此。注意，如果原始的嵌套连接是T1 ![image-20240929170242498](&#x2F;Users&#x2F;yifei&#x2F;Library&#x2F;Application Support&#x2F;typora-user-images&#x2F;image-20240929170242498.png) T2，那么 |D| ≤ |T1|。因此，如果在去相关子查询之后，最顶层的连接是一个将T1存储在哈希表中的哈希连接，那么计算D的内存消耗最多是原来的两倍，这就是最坏的情况。如果我们知道T1中的值是无重复的，例如因为它们包含一个主键，我们甚至可以避免实现D，而改为读取连接哈希表，从而消除其他解关联带来的开销。在正面，我们将一个O(n^2)的操作转化为了一个（理想情况下的）O(n)操作，这非常值。</p>
+<p>P.S. 这里的潜在问题是D能够被多次复用，如果不能的话，仍然会带来比较大的消耗。</p>
+<p>场景二的SQL 调整完效果</p>
+<p>![image-20240929174709184](&#x2F;Users&#x2F;yifei&#x2F;Library&#x2F;Application Support&#x2F;typora-user-images&#x2F;image-20240929174709184.png)</p>
+<p>​	![image-20240929171932545](&#x2F;Users&#x2F;yifei&#x2F;Library&#x2F;Application Support&#x2F;typora-user-images&#x2F;image-20240929171932545.png)</p>
+<h3 id="Anti-Join"><a href="#Anti-Join" class="headerlink" title="Anti-Join"></a>Anti-Join</h3><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br></pre></td><td class="code"><pre><span class="line">#</span><br><span class="line"># R : &#123;[A, ..., X, ...]&#125; and S : &#123;[B, ..., Y, ...]&#125;.</span><br><span class="line">#</span><br><span class="line"></span><br><span class="line">select R.*</span><br><span class="line">        from   R</span><br><span class="line">        where  R.X = all (select S.Y</span><br><span class="line">                          from S</span><br><span class="line">                          where S.B = R.A)</span><br></pre></td></tr></table></figure>
+
+<p>很明显，这个查询不能被转换成一个普通的<code>dependant Join</code>；但是可以否定谓词并使用一个<code>dependent anti-join</code>，如下一个图的左手边所示。在解关联优化的过程中，<code>dependent anti-join</code>可以被转换成一个<code>“normal” anti-join</code>。</p>
+<p>![image-20240930114240586](&#x2F;Users&#x2F;yifei&#x2F;Library&#x2F;Application Support&#x2F;typora-user-images&#x2F;image-20240930114240586.png)</p>
+<h3 id="更多优化"><a href="#更多优化" class="headerlink" title="更多优化"></a>更多优化</h3><p><em>simple unnesting</em>时，它完全消除了查询中的任何关联查询，得到的逻辑计划看起来就好像查询是在没有关联子查询一样。然而，<em>general unnesting</em>的情况必须添加计算域D的投影，以及与D的连接，这会导致一些额外的成本。当然，计算D通常仍然比计算嵌套子查询更可取，因为D的计算和与D的连接只造成一次性成本，而嵌套评估则会导致二次方的运行时间。但尽管如此，<strong>完全消除D</strong>还是很诱人的，有时也是可能的，如前面示例查询Q1中所见（参见图8）。</p>
+<ul>
+<li>替代 D</li>
+</ul>
+<p>一般来说，如果我们可以用<strong>子树中已经存在的值来替代D，我们就可以消除D</strong>。这通常在等值连接的情况下是常见的，例如查询包含了表达式D ![image-20240929170242498](&#x2F;Users&#x2F;yifei&#x2F;Library&#x2F;Application Support&#x2F;typora-user-images&#x2F;image-20240929170242498.png) D.a&#x3D;R.b R，<strong>我们可以通过检查R.b的值来了解D.a的可能值，这些值可以到达原始的依赖连接</strong>。当然D可能包含在R中不存在的值，但这些值永远不会找到join-pair ，因此也永远不会到达原始的依赖连接，因此我们可以忽略它们。</p>
+<p>为了决定替代，我们首先必须分析查询树，以找到由连接和过滤条件所诱导的<strong>等价类</strong>。例如，过滤条件σa&#x3D;b意味着a和b处于同一个等价类中。我们知道在最终结果中a和b具有相同的值，因此我们可以<strong>提前用b替代a</strong>，计算这些等价类是相对直接的。</p>
+<p>一个潜在的问题来源可能是外连接，它可能导致上述例子中的a和b不相等，但由于最顶层对D的连接是已知的不需要NULL值的时候仍然可以桌替换 。</p>
+<p>在确定了等价类C之后，我们可以根据以下所示决定可能的替代方案：<br>$$<br>D⋈T⊆χ A(D):B(T)<br> if ∃ B⊆A(T):A(D)≡ CB<br>$$</p>
+<p>因此，我们不是与D进行连接，而是可以扩展T（使用map运算符），并通过使用等价属性来计算D中隐含的属性值。请注意，这只是因为D是一个集合才成立的。注意，<strong>替代可能会增加中间结果的大小</strong>，两种表述之间的关系不是等于（&#x3D;）而是包含于（⊆）。这种基数增加是由于失去了与D连接的（潜在的）剪枝能力。我们不是用T中的每个元组来评估形成的相关子树，<strong>这些元组将在D中找到一个连接伙伴，而是用T中的每个元组来评估。那些没有连接伙伴的元组（只会）在树的更高层次上被消除，也就是在执行原始的依赖连接时，但中间结果可能会更大</strong>。</p>
+<p>因此，只有当与D的连接是不选择性的时，替代才有利。在查询Q1中就是这种情况，因此使用替代是一个好的选择，但一般来说，查询优化必须比较两种选择的代价并选择更优的一个。对于选择性连接，最好是保留D，从而尽可能早地消除元组。</p>
+
+      </div>
+      
+      
+      
+    </div>
+    
+
+    
+    
+    
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%83%8C%E6%99%AF"><span class="nav-number">1.</span> <span class="nav-text">背景</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%85%B3%E8%81%94%E6%9F%A5%E8%AF%A2%E6%A1%88%E4%BE%8B"><span class="nav-number">2.</span> <span class="nav-text">关联查询案例</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%9C%BA%E6%99%AF1-%E6%9F%A5%E8%AF%A2%E6%AF%8F%E4%B8%AA%E5%AD%A6%E7%94%9F%E7%9A%84%E6%9C%80%E4%BD%B3%E8%80%83%E8%AF%95%E6%88%90%E7%BB%A9%EF%BC%88%E6%A0%B9%E6%8D%AE%E5%BE%B7%E5%9B%BD%E8%AF%84%E5%88%86%E7%B3%BB%E7%BB%9F%EF%BC%8C%E5%85%B6%E4%B8%AD%E6%95%B0%E5%AD%97%E8%B6%8A%E4%BD%8E%E8%A1%A8%E7%A4%BA%E6%88%90%E7%BB%A9%E8%B6%8A%E5%A5%BD%EF%BC%89"><span class="nav-number">2.1.</span> <span class="nav-text">场景1: 查询每个学生的最佳考试成绩（根据德国评分系统，其中数字越低表示成绩越好）</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%9C%BA%E6%99%AF2%EF%BC%9A%E7%AD%9B%E9%80%89%E5%87%BA-CS-%E6%88%96Games-Eng-%E4%B8%93%E4%B8%9A%E4%B8%AD%E9%9C%80%E8%A6%81%E9%87%8D%E6%96%B0%E8%80%83%E8%AF%95%E7%9A%84%E5%AD%A6%E7%94%9F%E5%92%8C%E5%AF%B9%E5%BA%94%E7%9A%84%E8%80%83%E8%AF%95%E7%A7%91%E7%9B%AE%E3%80%82%E5%A6%82%E6%9E%9C%E5%AD%A6%E7%94%9F%E5%9C%A8%E8%BF%99%E4%BA%9B%E8%80%83%E8%AF%95%E4%B8%AD%E7%9A%84%E6%88%90%E7%BB%A9%E4%BD%8E%E4%BA%8E%E9%AB%98%E5%B9%B4%E7%BA%A7%E5%90%8C%E5%AD%A6%E7%9A%84%E7%9B%B8%E5%90%8C%E7%A7%91%E7%9B%AE%E7%9A%84%E5%B9%B3%E5%9D%87%E6%88%90%E7%BB%A9%EF%BC%8C%E9%82%A3%E4%B9%88%E5%B0%B1%E9%9C%80%E8%A6%81%E9%87%8D%E6%96%B0%E8%80%83%E8%AF%95%E3%80%82"><span class="nav-number">2.2.</span> <span class="nav-text">场景2：筛选出 CS 或Games Eng 专业中需要重新考试的学生和对应的考试科目。如果学生在这些考试中的成绩低于高年级同学的相同科目的平均成绩，那么就需要重新考试。</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E5%85%B3%E7%B3%BB%E4%BB%A3%E6%95%B0%E6%8A%BD%E8%B1%A1%E5%92%8C%E8%AF%81%E6%98%8E"><span class="nav-number">3.</span> <span class="nav-text">关系代数抽象和证明</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#%E7%AE%80%E5%8D%95%E5%9C%BA%E6%99%AF"><span class="nav-number">3.1.</span> <span class="nav-text">&gt; 简单场景</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%A4%8D%E6%9D%82%E5%9C%BA%E6%99%AF"><span class="nav-number">3.2.</span> <span class="nav-text">复杂场景</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#Anti-Join"><span class="nav-number">3.3.</span> <span class="nav-text">Anti-Join</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%9B%B4%E5%A4%9A%E4%BC%98%E5%8C%96"><span class="nav-number">3.4.</span> <span class="nav-text">更多优化</span></a></li></ol></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">Yifei Wu</p>
+  <div class="site-description" itemprop="description">开发心路历程笔记本</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">1</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://x.com/FeigeeWu" title="Twitter → https:&#x2F;&#x2F;x.com&#x2F;FeigeeWu" rel="noopener" target="_blank"><i class="fab fa-twitter fa-fw"></i>Twitter</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="https://www.zhihu.com/people/eager-wu" title="Zhihu → https:&#x2F;&#x2F;www.zhihu.com&#x2F;people&#x2F;eager-wu" rel="noopener" target="_blank"><i class="fa-hand-o-right fa-fw"></i>Zhihu</a>
+      </span>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2024</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">Yifei Wu</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>

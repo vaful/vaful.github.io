@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"always","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":false,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
+  </script>
+
+  <meta name="description" content="从一个JAVA开发者转 C++开发，经常听起来会比较难，所以畏惧。本文是我从一个JAVA开发者的视角学习 &lt;&lt;C++ High Performance&gt;&gt; 这本书之后的应对C++的基础开发，针对和Java 一些不同点，做了一个总结。个人感觉有个重点是C++程序员需要时刻关注类的生命周期，内存分配和回收这部分相关内容。  Value Vs Reference C++ 支持值语">
+<meta property="og:type" content="website">
+<meta property="og:title" content="飞哥编程笔记">
+<meta property="og:url" content="http://example.com/posts/C++%E5%9F%BA%E7%A1%80%E8%AE%A4%E8%AF%86.html">
+<meta property="og:site_name" content="飞哥编程笔记">
+<meta property="og:description" content="从一个JAVA开发者转 C++开发，经常听起来会比较难，所以畏惧。本文是我从一个JAVA开发者的视角学习 &lt;&lt;C++ High Performance&gt;&gt; 这本书之后的应对C++的基础开发，针对和Java 一些不同点，做了一个总结。个人感觉有个重点是C++程序员需要时刻关注类的生命周期，内存分配和回收这部分相关内容。  Value Vs Reference C++ 支持值语">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2024-10-11T06:49:45.024Z">
+<meta property="article:modified_time" content="2024-10-11T06:49:45.023Z">
+<meta property="article:author" content="Yifei Wu">
+<meta property="article:tag" content="数据库 分布式 OLAP">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/posts/C++%E5%9F%BA%E7%A1%80%E8%AE%A4%E8%AF%86">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : false,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title> | 飞哥编程笔记
+</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">飞哥编程笔记</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">阿飞学习备忘录</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+  </ul>
+</nav>
+
+
+
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+  
+  
+
+          <div class="content page posts-expand">
+            
+
+    
+    
+    
+    <div class="post-block" lang="zh-CN">
+      <header class="post-header">
+
+<h1 class="post-title" itemprop="name headline">
+</h1>
+
+<div class="post-meta">
+  
+
+</div>
+
+</header>
+
+      
+      
+      
+      <div class="post-body">
+          <p>从一个JAVA开发者转 C++开发，经常听起来会比较难，所以畏惧。本文是我从一个JAVA开发者的视角学习 <strong>&lt;&lt;C++ High Performance&gt;&gt;</strong> 这本书之后的应对C++的基础开发，针对和Java 一些不同点，做了一个总结。个人感觉有个重点是C++程序员需要时刻关注类的生命周期，内存分配和回收这部分相关内容。</p>
+<ol>
+<li><p><strong>Value Vs Reference</strong></p>
+<p>C++ 支持值语<code>value semantics and reference semantics</code>。值语义使我们可以通过值传递对象，而不仅仅是传递对象的引用。在 C++ 中，值语义是默认的，这意味着当你传递一个类或结构体的实例时，它的行为与传递一个 <code>int</code>、<code>float</code> 或其他基本类型是一样的。</p>
+<p>要使用<strong>引用语义</strong>，我们需要显式地使用<strong>引用或指针</strong>。C++ 的类型系统允许我们明确地声明对象的所有权(<code>Ownership</code>) 。</p>
+</li>
+</ol>
+<p>![image-20240605145120402](&#x2F;Users&#x2F;yifei&#x2F;Library&#x2F;Application Support&#x2F;typora-user-images&#x2F;image-20240605145120402.png)</p>
+<ol start="2">
+<li><p><strong>Const</strong> 语义</p>
+<ol>
+<li><p>常量正确性（Const Correctness）意味着，类的每个成员函数的签名都会明确告知调用者这个对象是否会被修改；如果调用者尝试修改一个声明为 const 的对象，那么代码将无法编译。在Java中常用手段是声明成final，但是其对应的语义不可更改得不到保证</p>
+<p>一个常见的const 错误用法，如下所示。尽管 <code>set_ptr_val()</code> 函数在修改 <code>int</code> 值，但声明为 <code>const</code> 是有效的，因为指针 <code>ptr_</code> 本身没有被修改，只有指针所指向的 <code>int</code> 对象被修改了。为了以一种可读的方式防止这种情况，标准库扩展中添加了一个叫做 <code>std::experimental::propagate_const</code> 的包装器（wrapper）。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">class</span> <span class="title class_">Foo</span> &#123;</span><br><span class="line"><span class="keyword">public</span>:</span><br><span class="line"> <span class="built_in">Foo</span>(<span class="type">int</span>* ptr) : ptr_&#123;ptr&#125; &#123;&#125;</span><br><span class="line"> <span class="function"><span class="keyword">auto</span> <span class="title">set_ptr_val</span><span class="params">(<span class="type">int</span> v)</span> <span class="type">const</span> </span>&#123;</span><br><span class="line"> *ptr_ = v; <span class="comment">// Compiles despite function being declared const!</span></span><br><span class="line"> &#125;</span><br><span class="line"><span class="keyword">private</span>:</span><br><span class="line"> <span class="type">int</span>* ptr_&#123;&#125;;</span><br><span class="line">&#125;;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="type">int</span> <span class="title">main</span><span class="params">()</span> </span>&#123;</span><br><span class="line">  <span class="keyword">auto</span> i = <span class="number">0</span>;</span><br><span class="line">  <span class="type">const</span> <span class="keyword">auto</span> foo= Foo&#123;&amp;i&#125;;</span><br><span class="line">  foo.<span class="built_in">set_ptr_val</span>(<span class="number">4</span>); <span class="comment">// 这里是能改变 i的值</span></span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></li>
+</ol>
+</li>
+<li><p>对象所有权</p>
+<p>除了非常罕见的情况外，C++ 程序员应该将内存管理交给容器和智能指针，而不是依赖手动内存管理。</p>
+<p>明确地说，通过使用 <code>std::shared_ptr</code> 来管理每个对象，几乎可以在 C++ 中模拟 Java 的垃圾回收模型。需要注意的是，垃圾回收语言和 <code>std::shared_ptr</code> 使用的分配跟踪算法并不相同。<code>std::shared_ptr</code> 是基于引用计数算法的智能指针，该算法在<strong>对象存在循环依赖时</strong>会导致内存泄漏。而垃圾回收语言则有更复杂的方法来处理和释放循环依赖的对象。</p>
+<p>然而，与其依赖垃圾收集器，强制严格的所有权管理能够巧妙地避免由于默认共享对象而导致的细微错误，这在 Java 中是常见的情况。</p>
+<p>如果程序员在 C++ 中尽量减少共享所有权，生成的代码将更易于使用且更难被滥用，因为这种严格的所有权模型能够强制类的用户按照预期方式使用该类。</p>
+</li>
+<li><h3 id="C-中的确定性析构"><a href="#C-中的确定性析构" class="headerlink" title="C++中的确定性析构"></a>C++中的确定性析构</h3><p>在C++中，对象的析构是确定性的。这意味着我们（可以）确切地知道对象何时被销毁。这与像Java这样的垃圾回收语言不同，在这些语言中，垃圾回收器决定何时对无引用的对象进行最终处理。</p>
+<p>在C++中，我们可以可靠地逆转对象生命周期内所完成的操作。乍一看，这似乎只是一个小细节。但实际上，它对我们如何提供异常安全保障和处理资源（如内存、文件句柄、互斥锁等等）有着深远的影响。</p>
+<p>确定性析构也是使C++具有可预测性的一项重要特性。这在程序员中备受推崇，并且是性能关键型应用的一个要求。</p>
+</li>
+<li><h3 id="C-的缺点"><a href="#C-的缺点" class="headerlink" title="C++的缺点"></a>C++的缺点</h3><p>在比较C++与其他编程语言时，如前所述，C++有更多的概念需要学习，因此正确使用C++并充分发挥其潜力较为困难。然而，如果程序员能够掌握C++，那么较高的复杂性会转化为优势，代码库将变得更健壮，性能也会更好。</p>
+<p>尽管如此，C++还是存在一些无法避免的缺点。其中最严重的缺点包括<strong>长时间的编译时间和复杂的库导入</strong>机制。在C++20之前，C++一直依赖于一个过时的导入系统，导入的头文件只是简单地粘贴到包含它们的文件中。C++20引入的模块系统（Modules）将解决一些基于头文件包含机制的问题，同时也会对大型项目的编译时间产生积极影响。</p>
+<p>另一个明显的缺点是C++提供的库较少。虽然其他语言通常自带各种应用所需的大部分库，例如图形、用户界面、网络、多线程、资源管理等，但C++提供的库基本上仅限于最基本的算法、多线程处理和从C++17开始的文件系统处理。对于其他功能，程序员不得不依赖外部库。</p>
+</li>
+<li><p>Morden C++ 中常见的技巧</p>
+<ol>
+<li><p>自动类型推导 <code>auto, auto&amp; 和 auto&amp;&amp;</code></p>
+<ul>
+<li><p>auto</p>
+<p>![](&#x2F;Users&#x2F;yifei&#x2F;Library&#x2F;Application Support&#x2F;typora-user-images&#x2F;image-20240705112754849.png)</p>
+<p>![image-20240705112817666](&#x2F;Users&#x2F;yifei&#x2F;Library&#x2F;Application Support&#x2F;typora-user-images&#x2F;image-20240705112817666.png)</p>
+</li>
+<li><p>auto&amp; 和 const auto&amp;</p>
+<p>一个 <code>const</code> 引用，用 <code>const auto&amp;</code> 表示，可以绑定到任何对象。通过这样的引用，原始对象是绝对不能被改变的。我认为，对于那些可能代价昂贵的对象，<code>const</code> 引用应该是默认选择。</p>
+<p>如果 <code>const</code> 引用绑定到一个临时对象，那么临时对象的生命周期将会被延长到引用的生命周期。这在以下例子中得到了演示：</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="function"><span class="type">void</span> <span class="title">some_func</span><span class="params">(<span class="type">const</span> std::string&amp; a, <span class="type">const</span> std::string&amp; b)</span> </span>&#123;</span><br><span class="line"> <span class="type">const</span> <span class="keyword">auto</span>&amp; str = a + b; <span class="comment">// a + b returns a temporary</span></span><br><span class="line"> <span class="comment">// ...</span></span><br><span class="line">&#125; <span class="comment">// str goes out of scope, temporary will be destroyed</span></span><br></pre></td></tr></table></figure>
+
+<p>通过使用<code>auto&amp;</code>也有可能最终得到一个<code>const reference</code>。这可以在以下例子中看到：</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">auto</span> foo = Foo&#123;&#125;;</span><br><span class="line"><span class="keyword">auto</span>&amp; cref = foo.<span class="built_in">cref</span>(); <span class="comment">// cref is a const reference</span></span><br><span class="line"><span class="keyword">auto</span>&amp; mref = foo.<span class="built_in">mref</span>(); <span class="comment">// mref is a mutable reference</span></span><br></pre></td></tr></table></figure>
+
+<p>尽管这样用是完全合法的，但更好的做法是，始终明确表示我们处理的是<code>const reference</code>，方法是使用<code>const auto&amp;</code>。更重要的是，我们应使用<code>auto&amp;</code>来明确表示可变的引用（mutable references）。</p>
+<p>简而言之，出于代码的可读性和自文档化的考虑，<strong>建议在需要<code>const reference</code>时显式使用<code>const auto&amp;</code>，仅在需要可变引用时使用<code>auto&amp;</code>。</strong></p>
+<p>与 <code>const reference </code> 不同，可变引用（即不带 <code>const</code> 的引用）<strong>不能绑定到临时对象</strong>。正如前面提到的，我们使用 <code>auto&amp;</code> 来表示可变引用。只有在你打算修改它所引用的对象时，才使用可变引用。</p>
+</li>
+<li><p>auto &amp;&amp;</p>
+<ul>
+<li><strong>Forwarding Reference</strong>：在函数模板中，<code>T&amp;&amp;</code> 和 <code>auto&amp;&amp;</code> 是转发引用，能够绑定左值和右值，并保持原始值类别。这对于具有传递和完美转发的泛型函数非常有用。</li>
+<li><strong>右值引用（Rvalue Reference）</strong>：使用显式类型与 <code>&amp;&amp;</code> 时（例如 <code>std::string&amp;&amp;</code>），表示的是右值引用，仅能绑定到右值。它主要用于实现移动语义，提高程序性能。</li>
+</ul>
+<p>作者建议对于基本类型（如 <code>int</code>、<code>float</code> 等）和较小的非基本类型（如 <code>std::pair</code> 和 <code>std::complex</code>），使用 <code>const auto</code>。对于可能复制代价较高的大型类型，使用 <code>const auto&amp;</code>。</p>
+<p><code>auto&amp;</code> 和 <code>auto</code> 则应仅在需要可变引用或显式复制行为时使用；这样可以向阅读代码的人传达这些变量的重要性，因为它们要么复制一个对象，要么修改一个引用的对象。</p>
+<p>最后，<code>auto&amp;&amp;</code> 仅用于转发代码。</p>
+</li>
+</ul>
+</li>
+<li><p>Move 语义（<code>the rule of five and rule of zero</code>）</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">auto</span> a = Widget&#123;&#125;;</span><br><span class="line"><span class="keyword">auto</span> b = a; <span class="comment">// Copy-construction </span></span><br></pre></td></tr></table></figure>
+
+<p>![image-20240705154730049](&#x2F;Users&#x2F;yifei&#x2F;Library&#x2F;Application Support&#x2F;typora-user-images&#x2F;image-20240705154730049.png)</p>
+<p><strong>分配和拷贝</strong>是缓慢的过程，而且在许多情况下，源对象已经不再需要。通过使用Move语义，编译器可以检测到类似这些旧对象不再与变量绑定的情况，并执行移动操作来取代拷贝操作。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">auto</span> a = Widget&#123;&#125;;</span><br><span class="line"><span class="keyword">auto</span> b = std::<span class="built_in">move</span>(a); <span class="comment">// Tell the compiler to move the resource into b</span></span><br></pre></td></tr></table></figure>
+
+<p>![image-20240705154939706](&#x2F;Users&#x2F;yifei&#x2F;Library&#x2F;Application Support&#x2F;typora-user-images&#x2F;image-20240705154939706.png)</p>
+<p>要完全理解移动语义，我们需要回到 C++ 中类和资源获取的基础概念之一。</p>
+<p>在 C++ 中的一个基本概念是，类应该完全管理其资源。这意味着，当一个类被复制、移动、赋值复制、赋值移动或销毁时，类应该确保其资源被相应地处理。实现这五个函数的必要性通常被称为“五法则”（The Rule of Five）。</p>
+<p>在这个例子中，类 <code>Buffer</code> 中处理的资源是在构造函数中分配的一块内存。内存可能是类处理的最常见的资源，但资源可以有很多种，比如互斥锁（mutex）、显卡上的纹理句柄、线程句柄等等。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">class</span> <span class="title class_">Buffer</span> &#123;</span><br><span class="line">  <span class="keyword">public</span>:</span><br><span class="line">   <span class="comment">// Constructor </span></span><br><span class="line">   <span class="built_in">Buffer</span>(<span class="type">const</span> std::initializer_list&lt;<span class="type">float</span>&gt;&amp; values)</span><br><span class="line">   		: size_&#123;values.<span class="built_in">size</span>()&#125; &#123;</span><br><span class="line">     ptr_ = <span class="keyword">new</span> <span class="type">float</span>[values.<span class="built_in">size</span>()];</span><br><span class="line">     std::<span class="built_in">copy</span>(values.<span class="built_in">begin</span>(), values.<span class="built_in">end</span>(), ptr_);</span><br><span class="line">   &#125;</span><br><span class="line">   <span class="function"><span class="keyword">auto</span> <span class="title">begin</span><span class="params">()</span> <span class="type">const</span> </span>&#123; <span class="keyword">return</span> ptr_; &#125;</span><br><span class="line">   <span class="function"><span class="keyword">auto</span> <span class="title">end</span><span class="params">()</span> <span class="type">const</span> </span>&#123; <span class="keyword">return</span> ptr_ + size_; &#125;</span><br><span class="line">  </span><br><span class="line"></span><br><span class="line">  <span class="keyword">private</span>:</span><br><span class="line">   <span class="type">size_t</span> size_&#123;<span class="number">0</span>&#125;;</span><br><span class="line">   <span class="type">float</span>* ptr_&#123;<span class="literal">nullptr</span>&#125;;</span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure>
+
+<p>五法则（The Rule of Five）中提到的五个函数包括：<strong>复制构造函数、复制赋值运算符、移动构造函数、移动赋值运算符和析构函数</strong>。接下来，我们将首先介绍复制构造函数、复制赋值运算符和析构函数，这些函数都需要参与资源管理。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 1. Copy constructor</span></span><br><span class="line">Buffer::<span class="built_in">Buffer</span>(<span class="type">const</span> Buffer&amp; other) : size_&#123;other.size_&#125; &#123;</span><br><span class="line"> ptr_ = <span class="keyword">new</span> <span class="type">float</span>[size_];</span><br><span class="line"> std::<span class="built_in">copy</span>(other.ptr_, other.ptr_ + size_, ptr_);</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// 2. Copy assignment</span></span><br><span class="line"><span class="keyword">auto</span>&amp; Buffer::<span class="keyword">operator</span>=(<span class="type">const</span> Buffer&amp; other) &#123;</span><br><span class="line"> <span class="keyword">delete</span> [] ptr_;</span><br><span class="line"> ptr_ = <span class="keyword">new</span> <span class="type">float</span>[other.size_];</span><br><span class="line"> size_ = other.size_;</span><br><span class="line"> std::<span class="built_in">copy</span>(other.ptr_, other.ptr_ + size_, ptr_);</span><br><span class="line"> <span class="keyword">return</span> *<span class="keyword">this</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// 3. Destructor</span></span><br><span class="line">Buffer::~<span class="built_in">Buffer</span>() &#123;</span><br><span class="line"> <span class="keyword">delete</span> [] ptr_; <span class="comment">// OK, it is valid to delete a nullptr</span></span><br><span class="line"> ptr_ = <span class="literal">nullptr</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<p>虽然正确实现上面这三个函数（<strong>复制构造函数、复制赋值运算符和析构函数</strong>）已经足以让一个类管理其内部资源，但仍然有两个问题：</p>
+<ol>
+<li><strong>无法复制的资源</strong>：在 <code>Buffer</code> 类的例子中，我们的资源可以被复制，但是存在其他类型的资源是无法复制的。例如，一个类内部包含的资源可能是 <code>std::thread</code>、网络连接或其他不能复制的资源。在这些情况下，我们无法在对象之间传递资源。</li>
+<li><strong>不必要的复制</strong>：如果我们从一个函数返回 <code>Buffer</code> 类的实例，整个数组需要被复制。虽然编译器在某些情况下会优化掉这次复制操作。</li>
+</ol>
+<p>这些问题的解决方案是使用<strong>移动语义</strong>。除了复制构造函数和复制赋值运算符之外，我们可以为类添加<strong>移动构造函数和移动赋值运算符</strong>。但是他们不接受 <code>const</code> 引用（<code>const Buffer&amp;</code>）作为参数，而是接受 <code>Buffer&amp;&amp;</code> 类型的右值引用对象。</p>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// 4. Move constructor</span></span><br><span class="line">Buffer::<span class="built_in">Buffer</span>(Buffer&amp;&amp; other) <span class="keyword">noexcept</span></span><br><span class="line"> : size_&#123;other.size_&#125;, ptr_&#123;other.ptr_&#125; &#123;</span><br><span class="line"> other.ptr_ = <span class="literal">nullptr</span>;</span><br><span class="line"> other.size_ = <span class="number">0</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"><span class="comment">// 5. Move assignment</span></span><br><span class="line"><span class="keyword">auto</span>&amp; Buffer::<span class="keyword">operator</span>=(Buffer&amp;&amp; other) <span class="keyword">noexcept</span> &#123;</span><br><span class="line"> ptr_ = other.ptr_;</span><br><span class="line"> size_ = other.size_;</span><br><span class="line"> other.ptr_ = <span class="literal">nullptr</span>;</span><br><span class="line"> other.size_ = <span class="number">0</span>;</span><br><span class="line"> <span class="keyword">return</span> *<span class="keyword">this</span>;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"></span><br></pre></td></tr></table></figure>
+
+<p>正如你所看到的，这些函数不会抛出任何异常，因此可以标记为 <code>noexcept</code>。这是因为，与复制构造函数和复制赋值运算符不同，它们不分配内存或执行可能抛出异常的操作。</p>
+<ul>
+<li>**<code>noexcept</code> **：通过标记 Move构造函数和Move赋值运算符为 <code>noexcept</code>，告诉编译器这些操作不会抛出任何异常。这能让编译器在进行某些优化时更有信心，比如在某些标准容器操作中更倾向于移动而非复制。</li>
+<li><strong>与复制操作的区别</strong>：复制构造函数和复制赋值运算符必须分配新内存，这可能会抛出 <code>std::bad_alloc</code> 异常，因此通常无法标记为 <code>noexcept</code>。</li>
+</ul>
+<p>使用移动语义和 <code>noexcept</code> 能确保你的类在管理资源时既高效又安全。这是现代 C++ 编程中至关重要的最佳实践之一。</p>
+<ul>
+<li><p>Named variables and rvalues</p>
+<p>编译器在何时允许移动对象而不是进行拷贝呢？简短的回答是：当对象可以被归类为右值（rvalue）时，编译器会移动该对象。</p>
+<p>右值这个术语可能听起来有些复杂，但本质上，它只是一个没有与命名变量绑定的对象：</p>
+<ol>
+<li><strong>临时对象（Temporary Objects）</strong>：这些对象在表达式求值后立即销毁。例如，函数返回的临时对象或表达式结果。</li>
+<li><strong>字面值常量（Literal Constants）</strong>：直接出现在代码中的常量，如 <code>5</code>、<code>3.14</code>、字符串字面值等。这些常量没有明确的命名变量绑定它们。</li>
+<li><strong>使用 <code>std::move</code> 函数</strong>：通过显式调用 <code>std::move</code>，可以将一个左值强制转换为右值引用，这表明我们不再需要该对象，编译器可以安全地移动它。</li>
+</ol>
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// The object returned by make_buffer is not tied to a variable</span></span><br><span class="line">x = <span class="built_in">make_buffer</span>(); <span class="comment">// move-assigned</span></span><br><span class="line"><span class="comment">// The variable &quot;x&quot; is passed into std::move()</span></span><br><span class="line">y = std::<span class="built_in">move</span>(x); <span class="comment">// move-assigned</span></span><br></pre></td></tr></table></figure>
+
+<p>在 C++ 中，移动语义依赖于右值引用（<code>rvalue references</code>）来实现对象的高效转移而不进行拷贝。因为右值引用通常是在编译器确定对象不再被需要时才进行的，并且这种对象不应再被使用。</p>
+</li>
+<li><p>Rule Of Zero</p>
+<p> 在实践中，你很少需要自己编写复制&#x2F;移动构造函数、复制&#x2F;移动赋值运算符和析构函数。将类设计成不需要显式编写这些特殊成员函数（或者仅使用默认声明）通常称为零法则（The Rule of Zero）。这意味着，如果应用程序代码库中的一个类需要显式编写这些函数，那么这部分代码可能更适合放在库代码中。</p>
+<p> 当使用默认生成的移动赋值运算符时，有一个常见的陷阱：类中混合了基础类型和更高级的复合类型。与复合类型不同，基础类型（如 <code>int</code>、<code>float</code> 和 <code>bool</code>）在被移动时只是简单地被复制，因为它们不管理任何资源。这可能会导致部分资源没有正确移动，从而引发问题。</p>
+ <figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">class</span> <span class="title class_">Menu</span> &#123;</span><br><span class="line"><span class="keyword">public</span>:</span><br><span class="line"> <span class="built_in">Menu</span>(<span class="type">const</span> std::initializer_list&lt;std::string&gt;&amp; items)</span><br><span class="line"> : items_&#123;items&#125; &#123;&#125;</span><br><span class="line"> <span class="function"><span class="keyword">auto</span> <span class="title">select</span><span class="params">(<span class="type">int</span> i)</span> </span>&#123;</span><br><span class="line"> index_ = i;</span><br><span class="line"> &#125;</span><br><span class="line"> <span class="function"><span class="keyword">auto</span> <span class="title">selected_item</span><span class="params">()</span> <span class="type">const</span> </span>&#123;</span><br><span class="line"> <span class="keyword">return</span> index_ != <span class="number">-1</span> ? items_[index_] : <span class="string">&quot;&quot;</span>;</span><br><span class="line"> &#125;</span><br><span class="line"> <span class="comment">// ...</span></span><br><span class="line"><span class="keyword">private</span>:</span><br><span class="line"> <span class="type">int</span> index_&#123;<span class="number">-1</span>&#125;; <span class="comment">// Currently selected item</span></span><br><span class="line"> std::vector&lt;std::string&gt; items_;</span><br><span class="line">&#125;;</span><br><span class="line"></span><br><span class="line"><span class="function"><span class="type">int</span> <span class="title">main</span><span class="params">()</span> </span>&#123;</span><br><span class="line"> </span><br><span class="line"><span class="keyword">auto</span> a = Menu&#123;<span class="string">&quot;New&quot;</span>, <span class="string">&quot;Open&quot;</span>, <span class="string">&quot;Close&quot;</span>, <span class="string">&quot;Save&quot;</span>&#125;;</span><br><span class="line">a.<span class="built_in">select</span>(<span class="number">2</span>);</span><br><span class="line"><span class="keyword">auto</span> b = std::<span class="built_in">move</span>(a);</span><br><span class="line"><span class="keyword">auto</span> selected = a.<span class="built_in">selected_item</span>(); <span class="comment">// crash</span></span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line"></span><br><span class="line"><span class="built_in">Menu</span>(Menu&amp;&amp; other) <span class="keyword">noexcept</span> &#123;</span><br><span class="line"> std::<span class="built_in">swap</span>(items_, other.items_);</span><br><span class="line"> std::<span class="built_in">swap</span>(index_, other.index_);</span><br><span class="line">&#125;</span><br><span class="line"><span class="keyword">auto</span>&amp; <span class="keyword">operator</span>=(Menu&amp;&amp; other) <span class="keyword">noexcept</span> &#123;</span><br><span class="line"> std::<span class="built_in">swap</span>(items_, other.items_);</span><br><span class="line"> std::<span class="built_in">swap</span>(index_, other.index_); </span><br><span class="line"> <span class="keyword">return</span> *<span class="keyword">this</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+</li>
+<li><p>高级用法<code>Proxy Objects and Lazy Evaluation</code></p>
+ <figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">struct</span> <span class="title class_">Foo</span> &#123;</span><br><span class="line"> <span class="function"><span class="keyword">auto</span> <span class="title">func</span><span class="params">()</span> &amp;&amp; </span>&#123;&#125;</span><br><span class="line">&#125;;</span><br><span class="line"><span class="keyword">auto</span> a = Foo&#123;&#125;;</span><br><span class="line">a.<span class="built_in">func</span>(); <span class="comment">// Doesn&#x27;t compile, &#x27;a&#x27; is not an rvalue</span></span><br><span class="line">std::<span class="built_in">move</span>(a).<span class="built_in">func</span>(); <span class="comment">// Compiles</span></span><br><span class="line">Foo&#123;&#125;.<span class="built_in">func</span>(); <span class="comment">// Compiles</span></span><br></pre></td></tr></table></figure>
+</li>
+<li><p>pass-by-value-then-move</p>
+<p>   在初始化类成员时，可以安全地使用 “先按值传递再移动”（pass-by-value-then-move）模式。在构造新对象期间，没有已分配的缓冲区可以用于避免堆分配。因此，该模式既安全又高效。下面是一个包含一个 <code>std::vector</code> 成员的类及其构造函数的示例，来演示这一模式：</p>
+   <figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"></span><br><span class="line"><span class="keyword">class</span> <span class="title class_">Widget</span> &#123;</span><br><span class="line"> std::vector&lt;<span class="type">int</span>&gt; data_;</span><br><span class="line"><span class="keyword">public</span>:</span><br><span class="line"> <span class="built_in">Widget</span>(std::vector&lt;<span class="type">int</span>&gt; x) <span class="comment">// By value</span></span><br><span class="line"> : data_&#123;std::<span class="built_in">move</span>(x)&#125; &#123;&#125; <span class="comment">// Move-construct</span></span><br><span class="line"> <span class="comment">// ...</span></span><br><span class="line">&#125;;</span><br></pre></td></tr></table></figure></li>
+</ul>
+</li>
+<li><p>lambda function &amp; std::function</p>
+<table>
+<thead>
+<tr>
+<th></th>
+<th>Java</th>
+<th>C++</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>基本语法</td>
+<td><code>(parameters) -&gt; expression</code> or <code>&#123; statements &#125;</code></td>
+<td><code>[capture] (parameters) -&gt; return_type &#123; body &#125;</code></td>
+</tr>
+<tr>
+<td>使用场景</td>
+<td>实现函数式接口（Functional Interfaces）</td>
+<td>定义匿名函数</td>
+</tr>
+<tr>
+<td>类型推导</td>
+<td>参数类型自动推导或显式声明</td>
+<td>可自动推导参数和返回类型，可以显式声明返回类型</td>
+</tr>
+<tr>
+<td><strong>捕获方式</strong></td>
+<td><strong>不支持捕获</strong></td>
+<td><strong>支持按值捕获 <code>[=]</code>、按引用捕获 <code>[&amp;]</code> 以及混合捕获</strong></td>
+</tr>
+<tr>
+<td>语法简洁性</td>
+<td>较为简洁</td>
+<td>支持复杂的捕获和类型推导，灵活性高，但语法稍复杂</td>
+</tr>
+<tr>
+<td>适用场景</td>
+<td>主要用于函数式编程和流式处理</td>
+<td>主要用于 STL 算法、高阶函数、以及需要 Define inline function 模式</td>
+</tr>
+</tbody></table>
+<figure class="highlight java"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">import</span> java.util.Arrays;</span><br><span class="line"><span class="keyword">import</span> java.util.List;</span><br><span class="line"><span class="keyword">import</span> java.util.function.Predicate;</span><br><span class="line"></span><br><span class="line"><span class="keyword">public</span> <span class="keyword">class</span> <span class="title class_">LambdaExample</span> &#123;</span><br><span class="line">    <span class="keyword">public</span> <span class="keyword">static</span> <span class="keyword">void</span> <span class="title function_">main</span><span class="params">(String[] args)</span> &#123;</span><br><span class="line">        List&lt;String&gt; names = Arrays.asList(<span class="string">&quot;John&quot;</span>, <span class="string">&quot;Jane&quot;</span>, <span class="string">&quot;Jack&quot;</span>, <span class="string">&quot;Doe&quot;</span>);</span><br><span class="line"></span><br><span class="line">        <span class="comment">// 使用 lambda 表达式进行过滤</span></span><br><span class="line">        Predicate&lt;String&gt; startsWithJ = name -&gt; name.startsWith(<span class="string">&quot;J&quot;</span>);</span><br><span class="line">        names.stream()</span><br><span class="line">             .filter(startsWithJ)</span><br><span class="line">             .forEach(n-&gt; System.out::println(n));</span><br><span class="line">    &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+<figure class="highlight c++"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="meta">#<span class="keyword">include</span> <span class="string">&lt;iostream&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="keyword">include</span> <span class="string">&lt;vector&gt;</span></span></span><br><span class="line"><span class="meta">#<span class="keyword">include</span> <span class="string">&lt;algorithm&gt;</span></span></span><br><span class="line"></span><br><span class="line"><span class="function"><span class="type">int</span> <span class="title">main</span><span class="params">()</span> </span>&#123;</span><br><span class="line">    std::vector&lt;std::string&gt; names = &#123;<span class="string">&quot;John&quot;</span>, <span class="string">&quot;Jane&quot;</span>, <span class="string">&quot;Jack&quot;</span>, <span class="string">&quot;Doe&quot;</span>&#125;;</span><br><span class="line">    </span><br><span class="line">    <span class="comment">// 使用 lambda 表达式进行过滤</span></span><br><span class="line">    <span class="keyword">auto</span> startsWithJ = [](<span class="type">const</span> std::string&amp; name) &#123;</span><br><span class="line">        <span class="keyword">return</span> name[<span class="number">0</span>] == <span class="string">&#x27;J&#x27;</span>;</span><br><span class="line">    &#125;;</span><br><span class="line"></span><br><span class="line">    std::for_each(names.<span class="built_in">begin</span>(), names.<span class="built_in">end</span>(), [&amp;startsWithJ](<span class="type">const</span> std::string &amp;name) &#123;</span><br><span class="line">        <span class="keyword">if</span> (<span class="built_in">startsWithJ</span>(name)) &#123;</span><br><span class="line">            std::cout &lt;&lt; name &lt;&lt; std::endl;</span><br><span class="line">        &#125;</span><br><span class="line">    &#125;);</span><br><span class="line"></span><br><span class="line">    <span class="keyword">return</span> <span class="number">0</span>;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure></li>
+</ol>
+</li>
+</ol>
+
+      </div>
+      
+      
+      
+    </div>
+    
+
+    
+    
+    
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-3"><a class="nav-link" href="#C-%E4%B8%AD%E7%9A%84%E7%A1%AE%E5%AE%9A%E6%80%A7%E6%9E%90%E6%9E%84"><span class="nav-number">1.</span> <span class="nav-text">C++中的确定性析构</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#C-%E7%9A%84%E7%BC%BA%E7%82%B9"><span class="nav-number">2.</span> <span class="nav-text">C++的缺点</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">Yifei Wu</p>
+  <div class="site-description" itemprop="description">开发心路历程笔记本</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">1</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://x.com/FeigeeWu" title="Twitter → https:&#x2F;&#x2F;x.com&#x2F;FeigeeWu" rel="noopener" target="_blank"><i class="fab fa-twitter fa-fw"></i>Twitter</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="https://www.zhihu.com/people/eager-wu" title="Zhihu → https:&#x2F;&#x2F;www.zhihu.com&#x2F;people&#x2F;eager-wu" rel="noopener" target="_blank"><i class="fa-hand-o-right fa-fw"></i>Zhihu</a>
+      </span>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2024</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">Yifei Wu</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>

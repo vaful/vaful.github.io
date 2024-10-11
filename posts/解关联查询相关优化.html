@@ -1,0 +1,482 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"always","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":false,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
+  </script>
+
+  <meta name="description" content="解关联查询相关优化 关联子查询 什么是关联子查询？关联子查询（Correlated Subquery）是一种子查询（Subquery），它依赖于外部查询（Outer Query）中的某些列。这就导致 关联子查询的计划每次执行时，都需要使用外部查询中的数据来完成。 这种计划带来了一种全新的模式，使得关联子查询在执行过程中可能被多次执行，而简单子查询（Non-correlated Subquery）一">
+<meta property="og:type" content="website">
+<meta property="og:title" content="飞哥编程笔记">
+<meta property="og:url" content="http://example.com/posts/%E8%A7%A3%E5%85%B3%E8%81%94%E6%9F%A5%E8%AF%A2%E7%9B%B8%E5%85%B3%E4%BC%98%E5%8C%96.html">
+<meta property="og:site_name" content="飞哥编程笔记">
+<meta property="og:description" content="解关联查询相关优化 关联子查询 什么是关联子查询？关联子查询（Correlated Subquery）是一种子查询（Subquery），它依赖于外部查询（Outer Query）中的某些列。这就导致 关联子查询的计划每次执行时，都需要使用外部查询中的数据来完成。 这种计划带来了一种全新的模式，使得关联子查询在执行过程中可能被多次执行，而简单子查询（Non-correlated Subquery）一">
+<meta property="og:locale" content="zh_CN">
+<meta property="article:published_time" content="2024-10-11T06:49:45.060Z">
+<meta property="article:modified_time" content="2024-10-11T06:49:45.060Z">
+<meta property="article:author" content="Yifei Wu">
+<meta property="article:tag" content="数据库 分布式 OLAP">
+<meta name="twitter:card" content="summary">
+
+<link rel="canonical" href="http://example.com/posts/%E8%A7%A3%E5%85%B3%E8%81%94%E6%9F%A5%E8%AF%A2%E7%9B%B8%E5%85%B3%E4%BC%98%E5%8C%96">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : false,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title> | 飞哥编程笔记
+</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">飞哥编程笔记</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">阿飞学习备忘录</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+  </ul>
+</nav>
+
+
+
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+  
+  
+
+          <div class="content page posts-expand">
+            
+
+    
+    
+    
+    <div class="post-block" lang="zh-CN">
+      <header class="post-header">
+
+<h1 class="post-title" itemprop="name headline">
+</h1>
+
+<div class="post-meta">
+  
+
+</div>
+
+</header>
+
+      
+      
+      
+      <div class="post-body">
+          <p>解关联查询相关优化</p>
+<p>关联子查询</p>
+<p>什么是关联子查询？关联子查询（Correlated Subquery）是一种子查询（Subquery），它依赖于外部查询（Outer Query）中的某些列。这就导致 关联子查询的计划每次执行时，都需要使用外部查询中的数据来完成。</p>
+<p>这种计划带来了一种全新的模式，使得关联子查询在执行过程中可能被多次执行，而简单子查询（Non-correlated Subquery）一般都执行一次。</p>
+<p>下面我们将 <code>employees</code> 和 <code>departments</code> 表的结构画成表格。</p>
+<h3 id="employees-表："><a href="#employees-表：" class="headerlink" title="employees 表："></a><code>employees</code> 表：</h3><table>
+<thead>
+<tr>
+<th>employee_id</th>
+<th>employee_name</th>
+<th>salary</th>
+<th>department_id</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>1</td>
+<td>John Smith</td>
+<td>50000</td>
+<td>101</td>
+</tr>
+<tr>
+<td>2</td>
+<td>Jane Doe</td>
+<td>60000</td>
+<td>102</td>
+</tr>
+<tr>
+<td>3</td>
+<td>Alice Johnson</td>
+<td>70000</td>
+<td>103</td>
+</tr>
+<tr>
+<td>4</td>
+<td>Bob Brown</td>
+<td>55000</td>
+<td>101</td>
+</tr>
+<tr>
+<td>5</td>
+<td>Charlie Black</td>
+<td>72000</td>
+<td>102</td>
+</tr>
+<tr>
+<td>6</td>
+<td>Dan White</td>
+<td>48000</td>
+<td>103</td>
+</tr>
+</tbody></table>
+<h3 id="departments-表："><a href="#departments-表：" class="headerlink" title="departments 表："></a><code>departments</code> 表：</h3><table>
+<thead>
+<tr>
+<th>department_id</th>
+<th>department_name</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>101</td>
+<td>HR</td>
+</tr>
+<tr>
+<td>102</td>
+<td>Engineering</td>
+</tr>
+<tr>
+<td>103</td>
+<td>Marketing</td>
+</tr>
+</tbody></table>
+<p>通过上述表格，可以清晰地看到每个员工的薪水以及他们所属的部门。此外，我们可以根据关联子查询找出每个部门中薪水最高的员工。</p>
+<p>假设现在我们想要查询每个员工姓名和他们部门比他工资高的员工数。可以使用相关子查询来实现该需求：</p>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">SELECT</span> e1.name,</span><br><span class="line">       e1.salary,</span><br><span class="line">       (<span class="keyword">SELECT</span> <span class="built_in">COUNT</span>(<span class="operator">*</span>)</span><br><span class="line">        <span class="keyword">FROM</span> employees e2</span><br><span class="line">        <span class="keyword">WHERE</span> e2.department_id <span class="operator">=</span> e1.department_id</span><br><span class="line">          <span class="keyword">AND</span> e2.salary <span class="operator">&gt;</span> e1.salary) <span class="keyword">AS</span> employees_with_higher_salary</span><br><span class="line"><span class="keyword">FROM</span> employees e1;</span><br></pre></td></tr></table></figure>
+
+<p>外部查询选择了 <code>employees</code> 表中的每一行，并为每一行执行一次关联子查询。</p>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">SELECT</span> e1.name,</span><br><span class="line">           e1.salary,</span><br><span class="line">           ...</span><br><span class="line">    <span class="keyword">FROM</span> employees e1;</span><br></pre></td></tr></table></figure>
+
+<p>关联子查询，这个子查询内部引用了外部查询的列 <code>e1.department_id</code> 和 <code>e1.salary</code>，因此是一个关联子查询。  每次执行子查询时，都使用外部查询当前行的 <code>department_id</code> 和 <code>salary</code>。</p>
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">(<span class="keyword">SELECT</span> <span class="built_in">COUNT</span>(<span class="operator">*</span>)</span><br><span class="line">     <span class="keyword">FROM</span> employees e2</span><br><span class="line">     <span class="keyword">WHERE</span> e2.department_id <span class="operator">=</span> e1.department_id</span><br><span class="line">       <span class="keyword">AND</span> e2.salary <span class="operator">&gt;</span> e1.salary) <span class="keyword">AS</span> employees_with_higher_salary</span><br></pre></td></tr></table></figure>
+
+<p>实际执行</p>
+<p>  对于每一个 <code>e1</code> 中的记录，子查询都会执行，比较相同部门中工资高于当前员工的其他员工数量。按照这个基本语义的算法会是：对employees e1中的每一行数据拿到之后都会下发到， e2中的子查询中去检查是否满足<code>e2.department_id = e1.department_id AND e2.salary &gt; e1.salary</code> ，最后等所有的e1的数据全部往外输出。</p>
+<p>针对这个查询，其执行计划如下大概如下。</p>
+<p>![image-20240710172840625](&#x2F;Users&#x2F;yifei&#x2F;Library&#x2F;Application Support&#x2F;typora-user-images&#x2F;image-20240710172840625.png)</p>
+<p>但是如果就是单纯的按照这种方式执行，执行效率必然会非常低下，主要有两个原因：1. 需要从左边e1一条条去读，读完再去右表e2检查，会导致e2被扫描或者seek很多次 2. 正常执行逻辑都是自上而下，这种控制流更容易向量化，相反上面这种方式会导致整体框架开销也比较大。那么有没有什么好办法吗？</p>
+<p>解关联</p>
+<p>上述问题的核心矛盾，从上图上看是那个灰线框中的部分，他依赖了不属于自己的部分（OuterReference），那么就看能不能解决解决这个问题。</p>
+<p>CorrealationPushDown</p>
+<p>这里把Subquery的节点叫做CorrealationProject，本身不包含特殊节点，但是它的children 包含了OuterRef的节点。要消除OutRef，需要一路到Select这个节点，上面这个例子会经历Agg和Select。</p>
+<p>​	下推Agg：</p>
+<p>​		按照原始语义，这里输出的结果是和e1的列一致的，所以下推之后。需要保证不会减少行。这里需要额外带上来额外的PK或者显示增加uniqueKey。	</p>
+<p>​		这里主要考虑Null值的语义处理，不是所有的Agg都能下推。按照原始语义，如果左边e1的department_id值，在e2中没有对应的department_id，Agg会接到一个Null值，而不是直接丢掉(下推之后会直接抛弃)。这里的函数需要对空集和对null的计算结果是相同的。</p>
+<p>注意： 这里mysql count是不满足上述属性，count(null) !&#x3D; Count(Empty)； PG的语义是可以的。</p>
+<p>​	![image-20240820172303754](&#x2F;Users&#x2F;yifei&#x2F;Library&#x2F;Application Support&#x2F;typora-user-images&#x2F;image-20240820172303754.png)	</p>
+<p>​	下推Select：</p>
+<p>​		下推Select效果类似LeftJoin，Outer的数据总行数不会变少。</p>
+<p>![image-20240820175539445](&#x2F;Users&#x2F;yifei&#x2F;Library&#x2F;Application Support&#x2F;typora-user-images&#x2F;image-20240820175539445.png)</p>
+<p>通用解关联思路，见下面这两篇论文，下篇文章再详细说明： </p>
+<p>​		&lt;<a target="_blank" rel="noopener" href="https://www.microsoft.com/en-us/research/wp-content/uploads/2016/02/tr-2000-31.pdf?spm=ata.21736010.0.0.2c077536QQIE4M&file=tr-2000-31.pdf">Parameterized Queries and Nesting Equivalencies - C Galindo-Legaria</a>&gt; </p>
+<p>​		&lt;<a target="_blank" rel="noopener" href="https://dl.gi.de/bitstream/handle/20.500.12116/2418/383.pdf?spm=ata.21736010.0.0.2c077536QQIE4M&sequence=1">Unnesting Arbitrary Queries - T Neumann, A Kemper</a>&gt;</p>
+<figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br><span class="line">32</span><br><span class="line">33</span><br><span class="line">34</span><br><span class="line">35</span><br><span class="line">36</span><br><span class="line">37</span><br><span class="line">38</span><br><span class="line">39</span><br><span class="line">40</span><br><span class="line">41</span><br><span class="line">42</span><br><span class="line">43</span><br><span class="line">44</span><br><span class="line">45</span><br><span class="line">46</span><br><span class="line">47</span><br><span class="line">48</span><br></pre></td><td class="code"><pre><span class="line">digraph QueryPlan &#123;</span><br><span class="line">    node [shape=box];</span><br><span class="line"></span><br><span class="line">    // Define nodes</span><br><span class="line">    Limit [label=&quot;CLogicalLimit (\n(0.97.1.0), \&quot;id\&quot; (0), NULLsLast \n) global&quot;];</span><br><span class="line">    Project [label=&quot;CLogicalProject&quot;];</span><br><span class="line">    GetEmployees [label=&quot;CLogicalGet \&quot;employees\&quot; (\&quot;employees\&quot;)&quot;];</span><br><span class="line">    ProjectElement [label=&quot;CScalarProject \n\&quot;employees_with_higher_salary\&quot; (29), serialize = 1&quot;];</span><br><span class="line">    Subquery [label=&quot;CScalarSubquery[\&quot;count\&quot; (28)]&quot;];</span><br><span class="line">    GbAgg [label=&quot;CLogicalGbAgg( Global )\nGrp Cols: [][Global]&quot;];</span><br><span class="line">    Select [label=&quot;CLogicalSelect&quot;];</span><br><span class="line">    GetEmployees2 [label=&quot;CLogicalGet \&quot;employees\&quot; (\&quot;employees\&quot;)&quot;];</span><br><span class="line">    BoolOp [label=&quot;CScalarBoolOp (EboolopAnd)&quot;];</span><br><span class="line">    CmpEq [label=&quot;CScalarCmp (=)&quot;];</span><br><span class="line">    DepartmentId1 [label=&quot;CScalarIdent \&quot;department_id\&quot; (17)&quot;];</span><br><span class="line">    DepartmentId2 [label=&quot;CScalarIdent \&quot;department_id\&quot; (3)&quot;];</span><br><span class="line">    CmpGt [label=&quot;CScalarCmp (&gt;)&quot;];</span><br><span class="line">    Salary1 [label=&quot;CScalarIdent \&quot;salary\&quot; (16)&quot;];</span><br><span class="line">    Salary2 [label=&quot;CScalarIdent \&quot;salary\&quot; (2)&quot;];</span><br><span class="line">    CountFunction [label=&quot;CScalarAggFunc (count , Distinct: false)&quot;];</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">    // Define edges with a normal line</span><br><span class="line">    Limit -&gt; Project;</span><br><span class="line">    Project -&gt; GetEmployees;</span><br><span class="line">    Project -&gt; ProjectElement [style=dashed];</span><br><span class="line">    ProjectElement -&gt; Subquery;</span><br><span class="line">    Subquery -&gt; GbAgg;</span><br><span class="line">    GbAgg -&gt; CountFunction;</span><br><span class="line">    CountFunction -&gt; Select ; // Dashed line to indicate containment</span><br><span class="line"></span><br><span class="line"></span><br><span class="line">        Select -&gt; GetEmployees2;</span><br><span class="line">        Select -&gt; BoolOp [style=dashed]; // Dashed line to indicate containment</span><br><span class="line"></span><br><span class="line">        subgraph cluster_BoolOp &#123;</span><br><span class="line">            label=&quot;CScalarBoolOp (EboolopAnd)&quot;;</span><br><span class="line">            color=gray;</span><br><span class="line"></span><br><span class="line">            BoolOp -&gt; CmpEq;</span><br><span class="line">            BoolOp -&gt; CmpGt;</span><br><span class="line">            CmpEq -&gt; DepartmentId1;</span><br><span class="line">            CmpEq -&gt; DepartmentId2;</span><br><span class="line">            CmpGt -&gt; Salary1;</span><br><span class="line">            CmpGt -&gt; Salary2;</span><br><span class="line">        &#125;</span><br><span class="line">    </span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+
+
+
+
+
+
+
+<figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">CREATE</span> <span class="keyword">TABLE</span> employees (</span><br><span class="line">    id <span class="type">INT</span> <span class="keyword">PRIMARY</span> KEY,</span><br><span class="line">    name <span class="type">VARCHAR</span>(<span class="number">50</span>) <span class="keyword">NOT</span> <span class="keyword">NULL</span>,</span><br><span class="line">    salary <span class="type">DECIMAL</span>(<span class="number">10</span>, <span class="number">2</span>) <span class="keyword">NOT</span> <span class="keyword">NULL</span>,</span><br><span class="line">    department_id <span class="type">INT</span></span><br><span class="line">);</span><br><span class="line"></span><br><span class="line"></span><br><span class="line"><span class="keyword">INSERT</span> <span class="keyword">INTO</span> departments  <span class="keyword">VALUES</span></span><br><span class="line">(<span class="number">101</span>, <span class="string">&#x27;HR&#x27;</span>),</span><br><span class="line">(<span class="number">102</span>, <span class="string">&#x27;Engineering&#x27;</span>),</span><br><span class="line">(<span class="number">103</span>, <span class="string">&#x27;Marketing&#x27;</span>);</span><br><span class="line"></span><br><span class="line"><span class="keyword">INSERT</span> <span class="keyword">INTO</span> employees  <span class="keyword">VALUES</span></span><br><span class="line">(<span class="number">1</span>, <span class="string">&#x27;John Smith&#x27;</span>, <span class="number">50000</span>, <span class="number">101</span>),</span><br><span class="line">(<span class="number">2</span>, <span class="string">&#x27;Jane Doe&#x27;</span>, <span class="number">60000</span>, <span class="number">102</span>),</span><br><span class="line">(<span class="number">3</span>, <span class="string">&#x27;Alice Johnson&#x27;</span>, <span class="number">70000</span>, <span class="number">103</span>),</span><br><span class="line">(<span class="number">4</span>, <span class="string">&#x27;Bob Brown&#x27;</span>, <span class="number">55000</span>, <span class="number">101</span>),</span><br><span class="line">(<span class="number">5</span>, <span class="string">&#x27;Charlie Black&#x27;</span>, <span class="number">72000</span>, <span class="number">102</span>),</span><br><span class="line">(<span class="number">6</span>, <span class="string">&#x27;Dan White&#x27;</span>, <span class="number">48000</span>, <span class="number">103</span>);</span><br></pre></td></tr></table></figure>
+
+
+
+
+
+<h4 id="查询每个所在部门中有工资高于某一固定值的员工"><a href="#查询每个所在部门中有工资高于某一固定值的员工" class="headerlink" title="查询每个所在部门中有工资高于某一固定值的员工"></a>查询每个所在部门中有工资高于某一固定值的员工</h4><figure class="highlight sql"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">SELECT</span> e1.name, e1.salary</span><br><span class="line"><span class="keyword">FROM</span> employees e1</span><br><span class="line"><span class="keyword">WHERE</span> <span class="keyword">EXISTS</span> (</span><br><span class="line">    <span class="keyword">SELECT</span> <span class="number">1</span></span><br><span class="line">    <span class="keyword">FROM</span> employees e2</span><br><span class="line">    <span class="keyword">WHERE</span> e2.department_id <span class="operator">=</span> e1.department_id</span><br><span class="line">      <span class="keyword">AND</span> e2.salary <span class="operator">&gt;</span> <span class="number">6000</span></span><br><span class="line">);</span><br></pre></td></tr></table></figure>
+
+<h4 id="查询在其所在部门中的最高工资的员工"><a href="#查询在其所在部门中的最高工资的员工" class="headerlink" title="查询在其所在部门中的最高工资的员工"></a>查询在其所在部门中的最高工资的员工</h4><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br></pre></td><td class="code"><pre><span class="line">SELECT e1.name, e1.salary</span><br><span class="line">FROM employees e1</span><br><span class="line">WHERE e1.salary IN (</span><br><span class="line">    SELECT MAX(e2.salary)</span><br><span class="line">    FROM employees e2</span><br><span class="line">    WHERE e2.department_id = e1.department_id</span><br><span class="line">    GROUP BY e2.department_id</span><br><span class="line">);</span><br></pre></td></tr></table></figure>
+
+<h3 id="示例-4-查询工资高于自身所在部门平均工资的员工"><a href="#示例-4-查询工资高于自身所在部门平均工资的员工" class="headerlink" title="示例 4: 查询工资高于自身所在部门平均工资的员工"></a>示例 4: 查询工资高于自身所在部门平均工资的员工</h3><figure class="highlight plaintext"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br></pre></td><td class="code"><pre><span class="line">SELECT e1.name, </span><br><span class="line">       e1.salary </span><br><span class="line">FROM employees e1</span><br><span class="line">WHERE e1.salary &gt; (SELECT AVG(e2.salary)</span><br><span class="line">                   FROM employees e2</span><br><span class="line">                   WHERE e2.department_id = e1.department_id</span><br><span class="line">                   );</span><br></pre></td></tr></table></figure>
+
+
+
+<p>通用解法</p>
+
+      </div>
+      
+      
+      
+    </div>
+    
+
+    
+    
+    
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-3"><a class="nav-link" href="#employees-%E8%A1%A8%EF%BC%9A"><span class="nav-number">1.</span> <span class="nav-text">employees 表：</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#departments-%E8%A1%A8%EF%BC%9A"><span class="nav-number">2.</span> <span class="nav-text">departments 表：</span></a><ol class="nav-child"><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%9F%A5%E8%AF%A2%E6%AF%8F%E4%B8%AA%E6%89%80%E5%9C%A8%E9%83%A8%E9%97%A8%E4%B8%AD%E6%9C%89%E5%B7%A5%E8%B5%84%E9%AB%98%E4%BA%8E%E6%9F%90%E4%B8%80%E5%9B%BA%E5%AE%9A%E5%80%BC%E7%9A%84%E5%91%98%E5%B7%A5"><span class="nav-number">2.1.</span> <span class="nav-text">查询每个所在部门中有工资高于某一固定值的员工</span></a></li><li class="nav-item nav-level-4"><a class="nav-link" href="#%E6%9F%A5%E8%AF%A2%E5%9C%A8%E5%85%B6%E6%89%80%E5%9C%A8%E9%83%A8%E9%97%A8%E4%B8%AD%E7%9A%84%E6%9C%80%E9%AB%98%E5%B7%A5%E8%B5%84%E7%9A%84%E5%91%98%E5%B7%A5"><span class="nav-number">2.2.</span> <span class="nav-text">查询在其所在部门中的最高工资的员工</span></a></li></ol></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E7%A4%BA%E4%BE%8B-4-%E6%9F%A5%E8%AF%A2%E5%B7%A5%E8%B5%84%E9%AB%98%E4%BA%8E%E8%87%AA%E8%BA%AB%E6%89%80%E5%9C%A8%E9%83%A8%E9%97%A8%E5%B9%B3%E5%9D%87%E5%B7%A5%E8%B5%84%E7%9A%84%E5%91%98%E5%B7%A5"><span class="nav-number">3.</span> <span class="nav-text">示例 4: 查询工资高于自身所在部门平均工资的员工</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">Yifei Wu</p>
+  <div class="site-description" itemprop="description">开发心路历程笔记本</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">1</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://x.com/FeigeeWu" title="Twitter → https:&#x2F;&#x2F;x.com&#x2F;FeigeeWu" rel="noopener" target="_blank"><i class="fab fa-twitter fa-fw"></i>Twitter</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="https://www.zhihu.com/people/eager-wu" title="Zhihu → https:&#x2F;&#x2F;www.zhihu.com&#x2F;people&#x2F;eager-wu" rel="noopener" target="_blank"><i class="fa-hand-o-right fa-fw"></i>Zhihu</a>
+      </span>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2024</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">Yifei Wu</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>

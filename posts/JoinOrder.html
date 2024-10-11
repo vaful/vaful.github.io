@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=2">
+<meta name="theme-color" content="#222">
+<meta name="generator" content="Hexo 7.3.0">
+  <link rel="apple-touch-icon" sizes="180x180" href="/images/apple-touch-icon-next.png">
+  <link rel="icon" type="image/png" sizes="32x32" href="/images/favicon-32x32-next.png">
+  <link rel="icon" type="image/png" sizes="16x16" href="/images/favicon-16x16-next.png">
+  <link rel="mask-icon" href="/images/logo.svg" color="#222">
+
+<link rel="stylesheet" href="/css/main.css">
+
+
+<link rel="stylesheet" href="/lib/font-awesome/css/all.min.css">
+
+<script id="hexo-configurations">
+    var NexT = window.NexT || {};
+    var CONFIG = {"hostname":"example.com","root":"/","scheme":"Muse","version":"7.8.0","exturl":false,"sidebar":{"position":"left","display":"always","padding":18,"offset":12,"onmobile":false},"copycode":{"enable":false,"show_result":false,"style":null},"back2top":{"enable":true,"sidebar":false,"scrollpercent":false},"bookmark":{"enable":false,"color":"#222","save":"auto"},"fancybox":false,"mediumzoom":false,"lazyload":false,"pangu":false,"comments":{"style":"tabs","active":null,"storage":true,"lazyload":false,"nav":null},"algolia":{"hits":{"per_page":10},"labels":{"input_placeholder":"Search for Posts","hits_empty":"We didn't find any results for the search: ${query}","hits_stats":"${hits} results found in ${time} ms"}},"localsearch":{"enable":false,"trigger":"auto","top_n_per_article":1,"unescape":false,"preload":false},"motion":{"enable":true,"async":false,"transition":{"post_block":"fadeIn","post_header":"slideDownIn","post_body":"slideDownIn","coll_header":"slideLeftIn","sidebar":"slideUpIn"}}};
+  </script>
+
+  <meta name="description" content="JoinOrder 背景介绍Join Order 优化是数据库查询优化的重要一环，多表 join 的复杂查询其连接顺序对于查询性能有着显著的影响，因为不同的顺序可能会导致大幅不同的执行时间和资源消耗。但是优化器能够自动生成这些表的最优顺序是个很有挑战的问题，结合优化器来看会受以下方面影响： ​	搜索空间的大小: 对于涉及多个JOIN的查询，可能的JOIN 顺序构成了一个与连接数量呈指数级增长的巨大">
+<meta property="og:type" content="website">
+<meta property="og:title" content="飞哥编程笔记">
+<meta property="og:url" content="http://example.com/posts/JoinOrder.html">
+<meta property="og:site_name" content="飞哥编程笔记">
+<meta property="og:description" content="JoinOrder 背景介绍Join Order 优化是数据库查询优化的重要一环，多表 join 的复杂查询其连接顺序对于查询性能有着显著的影响，因为不同的顺序可能会导致大幅不同的执行时间和资源消耗。但是优化器能够自动生成这些表的最优顺序是个很有挑战的问题，结合优化器来看会受以下方面影响： ​	搜索空间的大小: 对于涉及多个JOIN的查询，可能的JOIN 顺序构成了一个与连接数量呈指数级增长的巨大">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:image" content="http://example.com/Users/yifei/Library/Application%20Support/typora-user-images/image-20240429145739440.png">
+<meta property="og:image" content="http://example.com/Users/yifei/Library/Application%20Support/typora-user-images/image-20240429145720713.png">
+<meta property="article:published_time" content="2024-10-11T06:49:45.039Z">
+<meta property="article:modified_time" content="2024-10-11T06:49:45.038Z">
+<meta property="article:author" content="Yifei Wu">
+<meta property="article:tag" content="数据库 分布式 OLAP">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:image" content="http://example.com/Users/yifei/Library/Application%20Support/typora-user-images/image-20240429145739440.png">
+
+<link rel="canonical" href="http://example.com/posts/JoinOrder">
+
+
+<script id="page-configurations">
+  // https://hexo.io/docs/variables.html
+  CONFIG.page = {
+    sidebar: "",
+    isHome : false,
+    isPost : false,
+    lang   : 'zh-CN'
+  };
+</script>
+
+  <title> | 飞哥编程笔记
+</title>
+  
+
+
+
+
+
+
+  <noscript>
+  <style>
+  .use-motion .brand,
+  .use-motion .menu-item,
+  .sidebar-inner,
+  .use-motion .post-block,
+  .use-motion .pagination,
+  .use-motion .comments,
+  .use-motion .post-header,
+  .use-motion .post-body,
+  .use-motion .collection-header { opacity: initial; }
+
+  .use-motion .site-title,
+  .use-motion .site-subtitle {
+    opacity: initial;
+    top: initial;
+  }
+
+  .use-motion .logo-line-before i { left: initial; }
+  .use-motion .logo-line-after i { right: initial; }
+  </style>
+</noscript>
+
+</head>
+
+<body itemscope itemtype="http://schema.org/WebPage">
+  <div class="container use-motion">
+    <div class="headband"></div>
+
+    <header class="header" itemscope itemtype="http://schema.org/WPHeader">
+      <div class="header-inner"><div class="site-brand-container">
+  <div class="site-nav-toggle">
+    <div class="toggle" aria-label="切换导航栏">
+      <span class="toggle-line toggle-line-first"></span>
+      <span class="toggle-line toggle-line-middle"></span>
+      <span class="toggle-line toggle-line-last"></span>
+    </div>
+  </div>
+
+  <div class="site-meta">
+
+    <a href="/" class="brand" rel="start">
+      <span class="logo-line-before"><i></i></span>
+      <h1 class="site-title">飞哥编程笔记</h1>
+      <span class="logo-line-after"><i></i></span>
+    </a>
+      <p class="site-subtitle" itemprop="description">阿飞学习备忘录</p>
+  </div>
+
+  <div class="site-nav-right">
+    <div class="toggle popup-trigger">
+    </div>
+  </div>
+</div>
+
+
+
+
+<nav class="site-nav">
+  <ul id="menu" class="main-menu menu">
+        <li class="menu-item menu-item-home">
+
+    <a href="/" rel="section"><i class="fa fa-home fa-fw"></i>首页</a>
+
+  </li>
+        <li class="menu-item menu-item-about">
+
+    <a href="/about/" rel="section"><i class="fa fa-user fa-fw"></i>关于</a>
+
+  </li>
+        <li class="menu-item menu-item-tags">
+
+    <a href="/tags/" rel="section"><i class="fa fa-tags fa-fw"></i>标签</a>
+
+  </li>
+        <li class="menu-item menu-item-archives">
+
+    <a href="/archives/" rel="section"><i class="fa fa-archive fa-fw"></i>归档</a>
+
+  </li>
+  </ul>
+</nav>
+
+
+
+
+</div>
+    </header>
+
+    
+  <div class="back-to-top">
+    <i class="fa fa-arrow-up"></i>
+    <span>0%</span>
+  </div>
+
+
+    <main class="main">
+      <div class="main-inner">
+        <div class="content-wrap">
+          
+  
+  
+
+          <div class="content page posts-expand">
+            
+
+    
+    
+    
+    <div class="post-block" lang="zh-CN">
+      <header class="post-header">
+
+<h1 class="post-title" itemprop="name headline">
+</h1>
+
+<div class="post-meta">
+  
+
+</div>
+
+</header>
+
+      
+      
+      
+      <div class="post-body">
+          <p>JoinOrder</p>
+<h2 id="背景介绍"><a href="#背景介绍" class="headerlink" title="背景介绍"></a>背景介绍</h2><p><code>Join Order</code> 优化是数据库查询优化的重要一环，多表 <code>join</code> 的复杂查询其连接顺序对于查询性能有着显著的影响，因为不同的顺序可能会导致大幅不同的执行时间和资源消耗。但是优化器能够自动生成这些表的最优顺序是个很有挑战的问题，结合优化器来看会受以下方面影响：</p>
+<p>​	<strong>搜索空间的大小</strong>: 对于涉及多个JOIN的查询，可能的JOIN 顺序构成了一个与连接数量呈<strong>指数级增长</strong>的巨大搜索空间。例如，涉及 N 个表的查询可能会有 N! (N的阶乘) 种不同的逻辑连接顺序，优化器需要在这个庞大的搜索空间里找到代价最小的顺序。</p>
+<p>​	<strong>代价估算</strong>:  优化器通常使用代价模型来估算不同查询执行计划的代价，这个模型包含若干代价基函数，用于估算不同数据库操作的资源消耗（如CPU时间、磁盘I&#x2F;O等）。代价模型中还依赖<strong>表统计信息</strong>，用于评估计算不同计划成本的输入， 最优JOIN顺序非常依赖于这些代价函数的准确估计。</p>
+<p>​	<strong>JoinOrder算法</strong>: 在实际的数据库优化器开发中，JoinOrder算法扮演着重要角色。例如，PostgreSQL 的查询优化器就使用了 JoinOrder 中的迭代动态规划算法来确定连接顺序。Microsoft SQL Server 也利用了复杂的代价基函数和统计信息来帮助其查询优化器生成高效的连接顺序。此外，分布式数据库、列式存储和云计算等也为 JoinOrder 优化带来了新的考量和挑战。当前主要的算法主要有三类，动态规划（Dynamic Programming）、遗传算法（Genetic Algorithms）和 贪心算法（Greedy Algorithms）。</p>
+<p>本文主要就 JoinOrder 的算法来展开说明。</p>
+<h2 id="DP（动态规划）"><a href="#DP（动态规划）" class="headerlink" title="DP（动态规划）"></a>DP（动态规划）</h2><p>​	动态规划的算法在VLDB 2006《<a href="https://link.zhihu.com/?target=https://www.researchgate.net/profile/Thomas_Neumann2/publication/47861835_Analysis_of_Two_Existing_and_One_New_Dynamic_Programming_Algorithm_for_the_Generation_of_Optimal_Bushy_Join_Trees_without_Cross_Products/links/0912f506d90ad19031000000.pdf">Analysis of Two Existing and One New Dynamic Programming Algorithm for the Generation of Optimal Bushy Join Trees without Cross Products</a>》中有详细的讲解，论文中的这些算法都是围绕完整的JoinGraph来设计的，然后通过动态规划（DP）快速遍历所有联通子图，从而迅速识别出<strong>最优JOIN顺序</strong>。</p>
+<p>​	动态规划算法的核心包括几个关键点：<strong>状态转移方程、初始状态、以及边界条件（包括算法的终止条件）</strong>。以下就这几个方面来说明文章中提到的几种动态规划算法。</p>
+<h3 id="DP-Size"><a href="#DP-Size" class="headerlink" title="DP-Size"></a>DP-Size</h3><p>这种算法的主要思路是把N个节点的图拆分成 k个节点和N-k个节点的子问题，然后通过这些子图来生成最优计划。</p>
+<p><strong>状态转移方程</strong><br>$$<br>S1 和 S2 是两个子集 \<br>BestPlan（S1 ∪ S2） &#x3D; MinCost( [\JoinTree(BestPlan(S1) , BestPlan(S2)) ,\<br>JoinTree((BestPlan(S1*) , BestPlan(S2*))&#x2F;((S1* ∪ S2*)&#x3D;(S1 ∪ S2)), …\])<br>\ 可以快速跳过S1 和S2没有边的情况，即不相邻，\这种情况下把S1和S2，S1<em>和S2</em> 都称作 csg-cmp-pair 【简单翻译成 连接子图 对】<br>$$<br><strong>初始状态</strong><br>$$<br>BestPlan(Ri&#x2F;(Ri ∈ R)) &#x3D; Ri   \ R是图中所有的节点，Ri指的是单独的顶点,如果只有一个节点那么就是自己<br>$$</p>
+<p><strong>终止条件</strong><br>$$<br>找到全部的节点集合 \R(S1 ∪ S2) &#x3D; R<br>$$</p>
+<p>接下去我们按照paper中的例子，简单过一下这个算法的执行流程应该就能清晰的理解这个算法。</p>
+<p>​	![image-20240425135234573](&#x2F;Users&#x2F;yifei&#x2F;Library&#x2F;Application Support&#x2F;typora-user-images&#x2F;image-20240425135234573.png)</p>
+<table>
+<thead>
+<tr>
+<th>S</th>
+<th>S1</th>
+<th></th>
+<th>BestPlan</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>n&#x3D;1</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>R0</td>
+<td></td>
+<td></td>
+<td>R0</td>
+</tr>
+<tr>
+<td>R1</td>
+<td></td>
+<td></td>
+<td>R1</td>
+</tr>
+<tr>
+<td>R2</td>
+<td></td>
+<td></td>
+<td>R2</td>
+</tr>
+<tr>
+<td>R3</td>
+<td></td>
+<td></td>
+<td>R3</td>
+</tr>
+<tr>
+<td>R4</td>
+<td></td>
+<td></td>
+<td>R4</td>
+</tr>
+<tr>
+<td><strong>n&#x3D;2</strong></td>
+<td><strong>S1</strong></td>
+<td><strong>S2</strong></td>
+<td></td>
+</tr>
+<tr>
+<td>R0,R1</td>
+<td>R0</td>
+<td>R1</td>
+<td>RO-R1</td>
+</tr>
+<tr>
+<td>R0,R2</td>
+<td>R0</td>
+<td>R2</td>
+<td>R0-R2</td>
+</tr>
+<tr>
+<td>R0,R3</td>
+<td>R0</td>
+<td>R3</td>
+<td>R0-R3</td>
+</tr>
+<tr>
+<td>R0-R4</td>
+<td>R0</td>
+<td>R4</td>
+<td></td>
+</tr>
+<tr>
+<td>…</td>
+<td></td>
+<td></td>
+<td></td>
+</tr>
+<tr>
+<td>{R0,R1,R2}</td>
+<td>R0</td>
+<td>R1,R2</td>
+<td></td>
+</tr>
+<tr>
+<td></td>
+<td>R2</td>
+<td>R0,R1</td>
+<td>R2-(R0-R1)</td>
+</tr>
+<tr>
+<td></td>
+<td>R0,R1</td>
+<td>R2</td>
+<td>(R0-R1)-R2</td>
+</tr>
+<tr>
+<td></td>
+<td>R0,R2</td>
+<td>R1</td>
+<td>(R0-R2)-R1</td>
+</tr>
+<tr>
+<td></td>
+<td>R1</td>
+<td>R0,R2</td>
+<td>R1-(R0-R2)</td>
+</tr>
+<tr>
+<td></td>
+<td>R1,R2</td>
+<td>R0</td>
+<td></td>
+</tr>
+</tbody></table>
+<p>对应的伪代码如下：</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//Input: a connected query graph with relations R = &#123;R0, . . . , Rn−1&#125;</span></span><br><span class="line"><span class="comment">// Output: an optimal bushy join tree without cross products</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">for</span> all Ri ∈ R &#123;</span><br><span class="line">  BestPlan(&#123;Ri&#125;) = Ri;</span><br><span class="line">&#125;</span><br><span class="line"><span class="keyword">for</span> all <span class="number">1</span> &lt; s ≤ n ascending <span class="comment">// size of plan</span></span><br><span class="line">  <span class="keyword">for</span> all <span class="number">1</span> ≤ s1 &lt; s &#123; <span class="comment">// size of left subplan</span></span><br><span class="line">    s2 = s − s1; <span class="comment">// size of right subplan</span></span><br><span class="line">    <span class="keyword">for</span> all S1 ⊂ R : |S1| = s1</span><br><span class="line">      S2 ⊂ R : |S2| = s2 &#123;</span><br><span class="line">        ++InnerCounter;</span><br><span class="line">        <span class="keyword">if</span> (∅ <span class="number">6</span>= S1 ∩ S2) <span class="keyword">continue</span>;</span><br><span class="line">        <span class="keyword">if</span> <span class="title function_">not</span> <span class="params">(S1 connected to S2)</span> <span class="keyword">continue</span>;</span><br><span class="line">        ++CsgCmpPairCounter;</span><br><span class="line">        p1=BestPlan(S1);</span><br><span class="line">        p2=BestPlan(S2);</span><br><span class="line">        CurrPlan = CreateJoinTree(p1, p2);</span><br><span class="line">        <span class="keyword">if</span> (cost(BestPlan(S1 ∪ S2)) &gt; cost(CurrPlan)) &#123;</span><br><span class="line">          BestPlan(S1 ∪ S2) = CurrPlan;</span><br><span class="line">        &#125;</span><br><span class="line">      &#125;</span><br><span class="line">  &#125;</span><br><span class="line">OnoLohmanCounter = CsgCmpPairCounter / <span class="number">2</span>;</span><br><span class="line"><span class="keyword">return</span> BestPlan(&#123;R0, . . . , Rn−<span class="number">1</span>&#125;);</span><br></pre></td></tr></table></figure>
+
+<h3 id="DP-Sub"><a href="#DP-Sub" class="headerlink" title="DP-Sub"></a>DP-Sub</h3><p>​	其实是动态规划中的状态压缩算法，把DP-SIZE中连接子图的状态用<code>bitmap</code>来表示，给每个节点<code>Ri</code>标号序号，通过比特位上的<code>1</code>和<code>0</code>表示节点是否在这个状态中，类似的场景还有<strong>多重背包，旅行商</strong>问题。<code>DP-Size</code>中的状态转移就变成了快速求Bitmap中<code>1</code>和<code>0</code>的组合问题。</p>
+<p>​	总结来说，状态压缩算法可以把多阶的状体转化为一阶的状态，可以简单高效的处理状态转化逻辑。而且在状态数较多但实际占用空间较小的情况上，状态压缩算法可以减少内存空间，提高状态访问速率。其伪代码如下，</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br><span class="line">24</span><br><span class="line">25</span><br><span class="line">26</span><br><span class="line">27</span><br><span class="line">28</span><br><span class="line">29</span><br><span class="line">30</span><br><span class="line">31</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Input: a connected query graph with relations R = &#123;R0, . . . , Rn−1&#125; </span></span><br><span class="line"><span class="comment">// Output: an optimal bushy join tree</span></span><br><span class="line"></span><br><span class="line"><span class="keyword">for</span> all Ri ∈ R &#123; </span><br><span class="line">  BestPlan(&#123;Ri&#125;) = Ri;</span><br><span class="line">&#125; </span><br><span class="line"></span><br><span class="line"><span class="keyword">for</span> <span class="number">1</span> ≤ i &lt; <span class="number">2</span>^(n−<span class="number">1</span>) ascending &#123;</span><br><span class="line">  S = &#123;Rj ∈ R|(bi/<span class="number">2</span>^j)mod <span class="number">2</span> = <span class="number">1</span>&#125; </span><br><span class="line">  <span class="keyword">if</span> not (connected S) <span class="keyword">continue</span>;  </span><br><span class="line">  <span class="keyword">for</span> all S1 ⊂ S, S1 != ∅ <span class="keyword">do</span> &#123; </span><br><span class="line">    ++InnerCounter;</span><br><span class="line">    S2 = S \ S1;</span><br><span class="line">    <span class="keyword">if</span> (S2 = ∅) <span class="keyword">continue</span>;</span><br><span class="line">    <span class="keyword">if</span> <span class="title function_">not</span> <span class="params">(connected S1)</span> <span class="keyword">continue</span>;</span><br><span class="line">    <span class="keyword">if</span> <span class="title function_">not</span> <span class="params">(connected S2)</span> <span class="keyword">continue</span>;</span><br><span class="line">    <span class="keyword">if</span> <span class="title function_">not</span> <span class="params">(S1 connected to S2)</span> <span class="keyword">continue</span>;</span><br><span class="line">    ++CsgCmpPairCounter;</span><br><span class="line">    </span><br><span class="line">    p1 = BestPlan(S1);</span><br><span class="line">    p2 = BestPlan(S2);</span><br><span class="line">    </span><br><span class="line">    CurrPlan = CreateJoinTree(p1, p2);</span><br><span class="line">    <span class="keyword">if</span> (cost(BestPlan(S)) &gt; cost(CurrPlan)) &#123;</span><br><span class="line">      BestPlan(S) = CurrPlan;</span><br><span class="line">    &#125;</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">OnoLohmanCounter = CsgCmpPairCounter / <span class="number">2</span>;</span><br><span class="line"><span class="keyword">return</span> BestPlan(&#123;R0, . . . , Rn−<span class="number">1</span>&#125;);</span><br></pre></td></tr></table></figure>
+<p>​	论文中用下图展示了上述两种算法的搜索空间以及访问次数<code>InnerCounter</code>。从结果上看，<code>DPsub</code> 和 <code>DPsize</code> 在不同类型上的 <code>SQL</code> 中各有优劣，但是不管<code> DPsize</code> 还是<code> DPsub</code>，它们的 <code>InnerCounter</code> 都远高于<code> #ccp</code>（<code> #ccp</code> 是这个算法的理论下界）<br>![image-20240428161601608](&#x2F;Users&#x2F;yifei&#x2F;Library&#x2F;Application Support&#x2F;typora-user-images&#x2F;image-20240428161601608.png)</p>
+<h3 id="DP-ccp"><a href="#DP-ccp" class="headerlink" title="DP-ccp"></a>DP-ccp</h3><p>​	因为上面两种算法的实际效果都远远高于理论下界，所以作者提出了一个全新的算法，做到遍历一次且最多一次访问每一对#ccp的算法，那么这种情况下其效率最高，算法主要步骤如下：</p>
+<ol>
+<li>给定固定的顺序（比如节点id升序）生成所有的连通子图#csg，然后基于这个顺序生成每一对#ccp</li>
+<li>基于ccp一次遍历算出最优的Plan</li>
+</ol>
+<p><strong>Step 1</strong>. 生成#csg</p>
+<p>​	伪代码如下，配合下图中的案例就会很好理解整个过程。</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br><span class="line">22</span><br><span class="line">23</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">//EnumerateCsg</span></span><br><span class="line"><span class="comment">//Input: a connected query graph G = (V, E)</span></span><br><span class="line"><span class="comment">//Precondition: nodes in V are numbered according to a breadth-first search</span></span><br><span class="line"><span class="comment">// Output: emits all subsets of V inducing a connected subgraph of G</span></span><br><span class="line"></span><br><span class="line"><span class="comment">// N(S) 指的是 S&#123;vi&#125; 集合的相邻点集合，Bi指的是节点序号小于当前i的集合 Bi = &#123;vj |j ≤ i&#125;</span></span><br><span class="line"></span><br><span class="line">def <span class="title function_">EnumerateCsg</span><span class="params">(G)</span> &#123;</span><br><span class="line">  <span class="keyword">for</span> all i ∈ [n − <span class="number">1</span>, . . . , <span class="number">0</span>] descending &#123;</span><br><span class="line">    emit &#123;vi&#125;;</span><br><span class="line">    EnumerateCsgRec(G, &#123;vi&#125;, Bi);</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br><span class="line"></span><br><span class="line">def <span class="title function_">EnumerateCsgRec</span><span class="params">(G, S, X)</span> &#123;</span><br><span class="line">  N = N (S) \ X;</span><br><span class="line">  <span class="keyword">for</span> all S0 ⊆ N, S0 != ∅, enumerate subsets first &#123;</span><br><span class="line">    emit (S ∪ S0);</span><br><span class="line">  &#125;</span><br><span class="line">  <span class="keyword">for</span> all S0 ⊆ N, S0 != ∅, enumerate subsets first &#123;</span><br><span class="line">    EnumerateCsgRec(G, (S ∪ S0), (X ∪ N));</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure>
+
+
+<p float="left">
+  <img src="/Users/yifei/Library/Application Support/typora-user-images/image-20240429145739440.png" alt="Alt text 1" width="45%"/>
+  <img src="/Users/yifei/Library/Application Support/typora-user-images/image-20240429145720713.png" alt="Alt text 2" width="45%" /> 
+</p>
+ 
+
+<p><strong>Step 2.</strong> 生成#csg 的补图，组成#ccp。</p>
+<pre><code> 算法的核心思想是只生成一次ccp，we have to generate every csg-cmp-pair once and only once. 注意这里的#ccp是不同的size下的#ccp，是为了填充DP算法中所有状态机。
+</code></pre>
+<p>​	为了达成 once and only once 的目标，文章中仍然提出了个按照固定的顺序来遍历生成。要求，S的<code>补图S0</code>中的节点Id都比<code>S1</code>大。</p>
+<p>我们用如图 6 所示的图来考虑 EnumerateCmp 的示例。假设 EnumerateCmp 被调用，其参数 S1 &#x3D; {R1}。</p>
+<blockquote>
+<p>​	在第一条语句中，X &#x3D; {R0, R1} 。</p>
+<p>​	然后，计算N(S1)&#x3D;{R0,R4} , N &#x3D; {R0, R4} \ {R0, R1} &#x3D; {R4}。</p>
+<p>​	因此，{R4} 被输出，形成了 csg-cmp-pair ({R1}, {R4})。</p>
+<p>​	然后，随着参数 G, {R4}, 和 {R0, R1, R4}，对 EnumerateCsgRec 进行递归调用。</p>
+<p>​	随后的 EnumerateCsgRec 生成了连接集 {R2, R4}、{R3, R4} 以及 {R2, R3, R4}，从而给出了另外三个 csg-cmp-对。</p>
+</blockquote>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br></pre></td><td class="code"><pre><span class="line">def <span class="title function_">EnumerateCmp</span><span class="params">()</span> &#123;</span><br><span class="line">  <span class="comment">// Input: a connected query graph G = (V, E), a connected subset S1</span></span><br><span class="line">  <span class="comment">// Precondition: nodes in V are numbered according to a breadth-first search</span></span><br><span class="line">  <span class="comment">// Output: emits all complements S2 for S1 such that (S1, S2) is a csg-cmp-pair</span></span><br><span class="line">  </span><br><span class="line">  <span class="comment">// N(S) 指的是 S&#123;vi&#125; 集合的相邻点集合，Bi 指的是节点序号小于当前i的集合 Bi = &#123;vj |j ≤ i&#125;</span></span><br><span class="line">  </span><br><span class="line">  X = Bmin(S1) ∪ S1;</span><br><span class="line">  N = N (S1) \ X;</span><br><span class="line">  <span class="keyword">for</span> <span class="title function_">all</span> <span class="params">(vi ∈ N by descending i)</span> &#123;</span><br><span class="line">    emit &#123;vi&#125;;</span><br><span class="line">    EnumerateCsgRec(G, &#123;vi&#125;, X ∪ N);</span><br><span class="line">  &#125;</span><br></pre></td></tr></table></figure>
+
+
+
+<p><strong>Step3.</strong> 基于#ccp 组合，递归一次找到相应的BestPlan	</p>
+<figure class="highlight c"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br><span class="line">6</span><br><span class="line">7</span><br><span class="line">8</span><br><span class="line">9</span><br><span class="line">10</span><br><span class="line">11</span><br><span class="line">12</span><br><span class="line">13</span><br><span class="line">14</span><br><span class="line">15</span><br><span class="line">16</span><br><span class="line">17</span><br><span class="line">18</span><br><span class="line">19</span><br><span class="line">20</span><br><span class="line">21</span><br></pre></td><td class="code"><pre><span class="line"><span class="comment">// Input: a connected query graph with relations R = &#123;R0, . . . , Rn−1&#125;</span></span><br><span class="line"><span class="comment">// Output: an optimal bushy join tree</span></span><br><span class="line"><span class="keyword">for</span> all Ri ∈ R) &#123;</span><br><span class="line">  BestPlan(&#123;Ri&#125;) = Ri;</span><br><span class="line">&#125;</span><br><span class="line"><span class="keyword">for</span> all csg-cmp-pairs (S1, S2), S = S1 ∪ S2 &#123;</span><br><span class="line">  ++InnerCounter;</span><br><span class="line">  ++OnoLohmanCounter;</span><br><span class="line">  p1 = BestPlan(S1);</span><br><span class="line">  p2 = BestPlan(S2);</span><br><span class="line">  CurrPlan = CreateJoinTree(p1, p2);</span><br><span class="line">  <span class="keyword">if</span> (cost(BestPlan(S)) &gt; cost(CurrPlan)) &#123;</span><br><span class="line">    BestPlan(S) = CurrPlan;</span><br><span class="line">  &#125;</span><br><span class="line">  CurrPlan = CreateJoinTree(p2, p1);</span><br><span class="line">  <span class="keyword">if</span> (cost(BestPlan(S)) &gt; cost(CurrPlan)) &#123;</span><br><span class="line">    BestPlan(S) = CurrPlan;</span><br><span class="line">  &#125;</span><br><span class="line">&#125;</span><br><span class="line">CsgCmpPairCounter = <span class="number">2</span> * OnoLohmanCounter;</span><br><span class="line"><span class="keyword">return</span> BestPlan(&#123;R0, . . . , Rn−<span class="number">1</span>&#125;);</span><br></pre></td></tr></table></figure>
+
+<h3 id="效果"><a href="#效果" class="headerlink" title="效果"></a>效果</h3><p>![image-20240506161629868](&#x2F;Users&#x2F;yifei&#x2F;Library&#x2F;Application Support&#x2F;typora-user-images&#x2F;image-20240506161629868.png)</p>
+<p>![image-20240429170629247](&#x2F;Users&#x2F;yifei&#x2F;Library&#x2F;Application Support&#x2F;typora-user-images&#x2F;image-20240429170629247.png)</p>
+<h3 id="小结"><a href="#小结" class="headerlink" title="小结"></a>小结</h3><p>​	从目前看到的DP实现大多是DP-Sub或者其变种，对于工业界中的场景会比论文中要多更多细节，需要考虑的场景要更多，比如</p>
+<ol>
+<li>很难遇到全都是InnerJoin的场景，针对OuterJoin的场景需要额外调整</li>
+<li>论文中基于的算法还都是单机场景下的计划生成，对分布式的场景需要额外的适配</li>
+<li>现实中超多表Join的场景下瓶颈往往不在优化器，一个最优的plan和次优的plan差异很有可能不大，这种场景下用户的预期可能是稳定</li>
+</ol>
+<h2 id="贪心-Greedy-Operator-Ordering"><a href="#贪心-Greedy-Operator-Ordering" class="headerlink" title="贪心(Greedy Operator Ordering)"></a>贪心(Greedy Operator Ordering)</h2><p>​	和最小生成树的算法类似，我们先回忆下最小生成树的算法：我们定义无向连通图的 <strong>最小生成树</strong>（Minimum Spanning Tree，MST）为边权和最小的生成树，如下图所示：</p>
+<p>![image-20240430110024607](&#x2F;Users&#x2F;yifei&#x2F;Library&#x2F;Application Support&#x2F;typora-user-images&#x2F;image-20240430110024607.png)</p>
+<p>MST的特点是最小权重的边一定是在MST中，证明可以通过归纳来说明整个贪心算法的正确性。所以步骤可以是</p>
+<p> <strong>Kruskal 算法</strong></p>
+<p>​	{4,1}–&gt;{4,1,2}–&gt; {4，1，2，3（排除4-2的边）} –&gt;{4,1,2,3,5} —&gt;{4,1,2,3,5,7} </p>
+<p> <strong>Prim算法</strong></p>
+<p>​	仍然是贪心，但是每次都保证子图都是连接的子图，加一个限制从相邻的边中找最小且不会形成环的边，这样能够组成最小的MST。</p>
+<h3 id="GOO"><a href="#GOO" class="headerlink" title="GOO"></a>GOO</h3><p>​	JoinOrder和上面的算法有什么区别呢？一般来说我们会<strong>选择每一轮中间结果最小的顺序</strong>来保证性能，和最小生成树的算法的区别主要是GOO后续子图的结果受前面的结果的影响，而最小生成树中权重是不会变的。</p>
+<p>​	算法选择每次估算的cost最小的边和子图，然后基于这个子图来更新剩余边和节点组成下一步JoinTree。</p>
+<h3 id="小结-1"><a href="#小结-1" class="headerlink" title="小结"></a>小结</h3><p>​	这样做的好处是能够非常快速地生成一个JoinOrder，可以快速规避一些非常差的Plan，针对超大规模的Join集合优化器下的场景往往就是足够的；缺点也很明显，他不能保证最优解。</p>
+<h2 id="遗传算法"><a href="#遗传算法" class="headerlink" title="遗传算法"></a>遗传算法</h2><p>基因算法（Genetic Algorithms, GAs）是模拟自然选择和遗传学原理的搜索算法，基因算法在Join Order优化中的实现步骤如下：</p>
+<ol>
+<li><p><strong>编码</strong>：首先，需要定义一种方式来编码查询中表的联接顺序。一个常见的方法是使用字符串或整数数组，其中每个元素代表一个参与联接的表。</p>
+</li>
+<li><p><strong>初始化种群</strong>：随机生成一组解作为起始种群。每个解代表一个可能的联接顺序。</p>
+</li>
+<li><p><strong>评估</strong>：为种群中的每个成员（即每个联接顺序）计算一个适应度值，该值反映了执行计划的成本。评估可以基于估计的查询执行时间、预计读取的数据量或其他相关的成本指标。</p>
+</li>
+<li><p><strong>选择</strong>：根据适应度值选择要保留到下一代的解。高适应度的解有更高的机会被选中。这一步骤模拟了自然选择过程中“适者生存”的原则。</p>
+</li>
+<li><p><strong>交叉（杂交）</strong>：通过组合两个（或以上）选中的解来创建新的解。交叉操作可以通过多种方式实现，例如，通过交换父代解的某些部分来生成子代解。</p>
+</li>
+<li><p><strong>变异</strong>：以一定的概率随机修改解的一部分，以引入新的遗传变异。这有助于保持种群的多样性，避免算法过早地收敛到局部最优解。</p>
+</li>
+<li><p><strong>迭代</strong>：重复评估、选择、交叉和变异步骤，直到满足某个终止条件，如达到预设的迭代次数或找到一个足够好的解。</p>
+</li>
+</ol>
+<p>寻找最优或近似最优的查询执行计划，以最小化查询处理的时间或资源消耗，但是设计有效的适应度函数和调整算法参数（如种群大小、交叉率和变异率）对于获得好的优化结果至关重要。</p>
+
+      </div>
+      
+      
+      
+    </div>
+    
+
+    
+    
+    
+
+
+          </div>
+          
+
+<script>
+  window.addEventListener('tabs:register', () => {
+    let { activeClass } = CONFIG.comments;
+    if (CONFIG.comments.storage) {
+      activeClass = localStorage.getItem('comments_active') || activeClass;
+    }
+    if (activeClass) {
+      let activeTab = document.querySelector(`a[href="#comment-${activeClass}"]`);
+      if (activeTab) {
+        activeTab.click();
+      }
+    }
+  });
+  if (CONFIG.comments.storage) {
+    window.addEventListener('tabs:click', event => {
+      if (!event.target.matches('.tabs-comment .tab-content .tab-pane')) return;
+      let commentClass = event.target.classList[1];
+      localStorage.setItem('comments_active', commentClass);
+    });
+  }
+</script>
+
+        </div>
+          
+  
+  <div class="toggle sidebar-toggle">
+    <span class="toggle-line toggle-line-first"></span>
+    <span class="toggle-line toggle-line-middle"></span>
+    <span class="toggle-line toggle-line-last"></span>
+  </div>
+
+  <aside class="sidebar">
+    <div class="sidebar-inner">
+
+      <ul class="sidebar-nav motion-element">
+        <li class="sidebar-nav-toc">
+          文章目录
+        </li>
+        <li class="sidebar-nav-overview">
+          站点概览
+        </li>
+      </ul>
+
+      <!--noindex-->
+      <div class="post-toc-wrap sidebar-panel">
+          <div class="post-toc motion-element"><ol class="nav"><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%83%8C%E6%99%AF%E4%BB%8B%E7%BB%8D"><span class="nav-number">1.</span> <span class="nav-text">背景介绍</span></a></li><li class="nav-item nav-level-2"><a class="nav-link" href="#DP%EF%BC%88%E5%8A%A8%E6%80%81%E8%A7%84%E5%88%92%EF%BC%89"><span class="nav-number">2.</span> <span class="nav-text">DP（动态规划）</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#DP-Size"><span class="nav-number">2.1.</span> <span class="nav-text">DP-Size</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#DP-Sub"><span class="nav-number">2.2.</span> <span class="nav-text">DP-Sub</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#DP-ccp"><span class="nav-number">2.3.</span> <span class="nav-text">DP-ccp</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E6%95%88%E6%9E%9C"><span class="nav-number">2.4.</span> <span class="nav-text">效果</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%B0%8F%E7%BB%93"><span class="nav-number">2.5.</span> <span class="nav-text">小结</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E8%B4%AA%E5%BF%83-Greedy-Operator-Ordering"><span class="nav-number">3.</span> <span class="nav-text">贪心(Greedy Operator Ordering)</span></a><ol class="nav-child"><li class="nav-item nav-level-3"><a class="nav-link" href="#GOO"><span class="nav-number">3.1.</span> <span class="nav-text">GOO</span></a></li><li class="nav-item nav-level-3"><a class="nav-link" href="#%E5%B0%8F%E7%BB%93-1"><span class="nav-number">3.2.</span> <span class="nav-text">小结</span></a></li></ol></li><li class="nav-item nav-level-2"><a class="nav-link" href="#%E9%81%97%E4%BC%A0%E7%AE%97%E6%B3%95"><span class="nav-number">4.</span> <span class="nav-text">遗传算法</span></a></li></ol></div>
+      </div>
+      <!--/noindex-->
+
+      <div class="site-overview-wrap sidebar-panel">
+        <div class="site-author motion-element" itemprop="author" itemscope itemtype="http://schema.org/Person">
+  <p class="site-author-name" itemprop="name">Yifei Wu</p>
+  <div class="site-description" itemprop="description">开发心路历程笔记本</div>
+</div>
+<div class="site-state-wrap motion-element">
+  <nav class="site-state">
+      <div class="site-state-item site-state-posts">
+          <a href="/archives/">
+        
+          <span class="site-state-item-count">1</span>
+          <span class="site-state-item-name">日志</span>
+        </a>
+      </div>
+  </nav>
+</div>
+  <div class="links-of-author motion-element">
+      <span class="links-of-author-item">
+        <a href="https://x.com/FeigeeWu" title="Twitter → https:&#x2F;&#x2F;x.com&#x2F;FeigeeWu" rel="noopener" target="_blank"><i class="fab fa-twitter fa-fw"></i>Twitter</a>
+      </span>
+      <span class="links-of-author-item">
+        <a href="https://www.zhihu.com/people/eager-wu" title="Zhihu → https:&#x2F;&#x2F;www.zhihu.com&#x2F;people&#x2F;eager-wu" rel="noopener" target="_blank"><i class="fa-hand-o-right fa-fw"></i>Zhihu</a>
+      </span>
+  </div>
+
+
+
+      </div>
+
+    </div>
+  </aside>
+  <div id="sidebar-dimmer"></div>
+
+
+      </div>
+    </main>
+
+    <footer class="footer">
+      <div class="footer-inner">
+        
+
+        
+
+<div class="copyright">
+  
+  &copy; 
+  <span itemprop="copyrightYear">2024</span>
+  <span class="with-love">
+    <i class="fa fa-heart"></i>
+  </span>
+  <span class="author" itemprop="copyrightHolder">Yifei Wu</span>
+</div>
+  <div class="powered-by">由 <a href="https://hexo.io/" class="theme-link" rel="noopener" target="_blank">Hexo</a> & <a href="https://muse.theme-next.org/" class="theme-link" rel="noopener" target="_blank">NexT.Muse</a> 强力驱动
+  </div>
+
+        
+
+
+
+
+
+
+
+
+      </div>
+    </footer>
+  </div>
+
+  
+  <script src="/lib/anime.min.js"></script>
+  <script src="/lib/velocity/velocity.min.js"></script>
+  <script src="/lib/velocity/velocity.ui.min.js"></script>
+
+<script src="/js/utils.js"></script>
+
+<script src="/js/motion.js"></script>
+
+
+<script src="/js/schemes/muse.js"></script>
+
+
+<script src="/js/next-boot.js"></script>
+
+
+
+
+  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  
+
+  
+
+</body>
+</html>
